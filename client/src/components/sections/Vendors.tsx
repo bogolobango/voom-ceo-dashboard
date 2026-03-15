@@ -110,13 +110,13 @@ export function Vendors({ vendors }: VendorsProps) {
         </svg>
       </div>
 
-      {/* Vendor Table */}
+      {/* Vendor List — card style on mobile, table on desktop */}
       <div className="glass-card" style={{ overflow: 'hidden', padding: 0 }}>
-        {/* Table Header */}
-        <div style={{
+        {/* Desktop Table Header — hidden on mobile */}
+        <div className="vendor-table-header" style={{
           display: 'grid',
           gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr',
-          padding: '0.875rem 1.25rem',
+          padding: '0.75rem 1.25rem',
           borderBottom: '1px solid rgba(79,70,229,0.06)',
           background: 'rgba(248,250,252,0.8)',
         }}>
@@ -127,73 +127,79 @@ export function Vendors({ vendors }: VendorsProps) {
           ))}
         </div>
 
-        {/* Table Rows */}
-        <div style={{ maxHeight: 480, overflowY: 'auto' }}>
+        {/* Rows */}
+        <div style={{ maxHeight: 520, overflowY: 'auto' }}>
           {filtered.map((vendor, i) => {
             const st = STATUS_STYLES[vendor.status] || STATUS_STYLES.pending;
             return (
               <div
                 key={vendor.id}
+                className="vendor-row"
                 style={{
-                  display: 'grid',
-                  gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr',
-                  padding: '0.875rem 1.25rem',
+                  padding: '0.75rem 1rem',
                   borderBottom: i < filtered.length - 1 ? '1px solid rgba(79,70,229,0.04)' : 'none',
-                  transition: 'background 0.15s ease',
                   cursor: 'pointer',
                 }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(79,70,229,0.03)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                  <div style={{
-                    width: 32, height: 32, borderRadius: '0.5rem', flexShrink: 0,
-                    background: `hsl(${(vendor.id * 47) % 360}, 65%, 92%)`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '0.75rem', fontWeight: 800,
-                    color: `hsl(${(vendor.id * 47) % 360}, 55%, 40%)`,
-                  }}>
-                    {vendor.businessName.charAt(0)}
+                {/* Mobile card layout */}
+                <div className="vendor-mobile-card">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '0.5rem' }}>
+                    <div style={{
+                      width: 36, height: 36, borderRadius: '0.625rem', flexShrink: 0,
+                      background: `hsl(${(vendor.id * 47) % 360}, 65%, 92%)`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '0.875rem', fontWeight: 800,
+                      color: `hsl(${(vendor.id * 47) % 360}, 55%, 40%)`,
+                    }}>
+                      {vendor.businessName.charAt(0)}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0F172A', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {vendor.businessName}
+                      </p>
+                      <p style={{ fontSize: '0.7rem', color: '#94A3B8', margin: 0 }}>{vendor.phone}</p>
+                    </div>
+                    <span style={{
+                      fontSize: '0.68rem', fontWeight: 600,
+                      background: st.bg, color: st.color,
+                      padding: '0.15rem 0.5rem', borderRadius: 999, flexShrink: 0,
+                    }}>{st.label}</span>
                   </div>
-                  <div>
-                    <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0F172A', margin: 0 }}>
-                      {vendor.businessName}
-                    </p>
-                    <p style={{ fontSize: '0.7rem', color: '#94A3B8', margin: 0 }}>
-                      {vendor.phone}
-                    </p>
+                  <div style={{ display: 'flex', gap: '1rem', paddingLeft: '2.875rem' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#64748B' }}>{vendor.city || '—'}</span>
+                    <span style={{ fontSize: '0.72rem', color: '#64748B' }}>Sales: <strong style={{ color: '#0F172A', fontFamily: 'Space Grotesk' }}>{vendor.totalSales || 0}</strong></span>
+                    {vendor.rating && <span style={{ fontSize: '0.72rem', color: '#F59E0B' }}>★ {vendor.rating}</span>}
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center' }}>
+
+                {/* Desktop table layout */}
+                <div className="vendor-desktop-row" style={{
+                  display: 'grid',
+                  gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr',
+                  alignItems: 'center',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                    <div style={{
+                      width: 32, height: 32, borderRadius: '0.5rem', flexShrink: 0,
+                      background: `hsl(${(vendor.id * 47) % 360}, 65%, 92%)`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '0.75rem', fontWeight: 800,
+                      color: `hsl(${(vendor.id * 47) % 360}, 55%, 40%)`,
+                    }}>{vendor.businessName.charAt(0)}</div>
+                    <div>
+                      <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0F172A', margin: 0 }}>{vendor.businessName}</p>
+                      <p style={{ fontSize: '0.7rem', color: '#94A3B8', margin: 0 }}>{vendor.phone}</p>
+                    </div>
+                  </div>
                   <span style={{ fontSize: '0.8125rem', color: '#475569' }}>{vendor.city || '—'}</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <span style={{
-                    fontSize: '0.72rem', fontWeight: 600,
-                    background: st.bg, color: st.color,
-                    padding: '0.2rem 0.6rem', borderRadius: 999,
-                  }}>
-                    {st.label}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#0F172A', fontFamily: 'Space Grotesk' }}>
-                    {vendor.totalSales || 0}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  {vendor.rating ? (
-                    <>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="#F59E0B" stroke="none">
-                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-                      </svg>
-                      <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0F172A', fontFamily: 'Space Grotesk' }}>
-                        {vendor.rating}
-                      </span>
-                    </>
-                  ) : (
-                    <span style={{ fontSize: '0.75rem', color: '#CBD5E1' }}>—</span>
-                  )}
+                  <span style={{ fontSize: '0.72rem', fontWeight: 600, background: st.bg, color: st.color, padding: '0.2rem 0.6rem', borderRadius: 999 }}>{st.label}</span>
+                  <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#0F172A', fontFamily: 'Space Grotesk' }}>{vendor.totalSales || 0}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    {vendor.rating ? (
+                      <><svg width="12" height="12" viewBox="0 0 24 24" fill="#F59E0B" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                      <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0F172A', fontFamily: 'Space Grotesk' }}>{vendor.rating}</span></>
+                    ) : <span style={{ fontSize: '0.75rem', color: '#CBD5E1' }}>—</span>}
+                  </div>
                 </div>
               </div>
             );

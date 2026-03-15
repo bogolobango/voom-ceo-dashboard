@@ -142,21 +142,22 @@ export function MetricCard({
 
       <div className="relative z-10">
         {/* Header row */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
           <p style={{
-            fontSize: '0.8125rem',
+            fontSize: 'clamp(0.7rem, 2.5vw, 0.8125rem)',
             fontWeight: 500,
             color: '#64748B',
             letterSpacing: '0.01em',
             fontFamily: 'Plus Jakarta Sans, sans-serif',
+            lineHeight: 1.3,
           }}>
             {label}
           </p>
           {icon && (
             <div style={{
-              width: 36,
-              height: 36,
-              borderRadius: '0.625rem',
+              width: 30,
+              height: 30,
+              borderRadius: '0.5rem',
               background: styles.iconBg,
               display: 'flex',
               alignItems: 'center',
@@ -171,27 +172,30 @@ export function MetricCard({
 
         {/* KPI Value */}
         <p className="kpi-value" style={{
-          fontSize: '2rem',
+          fontSize: format === 'cedis' ? 'clamp(1rem, 3.5vw, 1.75rem)' : 'clamp(1.25rem, 4vw, 2rem)',
           color: '#0F172A',
-          marginBottom: '0.5rem',
+          marginBottom: '0.375rem',
+          wordBreak: 'break-all',
+          overflowWrap: 'break-word',
+          lineHeight: 1.1,
         }}>
           {formatValue(displayValue, format)}
         </p>
 
         {/* Subtitle */}
         {subtitle && (
-          <p style={{ fontSize: '0.75rem', color: '#94A3B8', marginBottom: '0.5rem' }}>
+          <p className="metric-subtitle" style={{ fontSize: 'clamp(0.62rem, 2vw, 0.75rem)', color: '#94A3B8', marginBottom: '0.375rem', lineHeight: 1.3 }}>
             {subtitle}
           </p>
         )}
 
         {/* Trend Badge */}
         {trend !== undefined && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-            <span className={isPositive ? 'trend-up' : 'trend-down'}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexWrap: 'wrap' }}>
+            <span className={isPositive ? 'trend-up' : 'trend-down'} style={{ fontSize: 'clamp(0.6rem, 2vw, 0.75rem)' }}>
               {isPositive ? '↑' : '↓'} {Math.abs(trend).toFixed(1)}%
             </span>
-            <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>{trendLabel}</span>
+            <span className="metric-trend-label" style={{ fontSize: 'clamp(0.58rem, 1.8vw, 0.72rem)', color: '#94A3B8' }}>{trendLabel}</span>
           </div>
         )}
       </div>
