@@ -1,25 +1,264 @@
-import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
-import { Streamdown } from 'streamdown';
-
 /**
- * All content in this page are only for example, replace with your own feature implementation
- * When building pages, remember your instructions in Frontend Best Practices, Design Guide and Common Pitfalls
+ * VOOM Ghana CEO Dashboard — Home Page
+ * Arctic Glass Design System
+ * White canvas + floating glass morphism panels
+ * Typography: Plus Jakarta Sans + Space Grotesk
  */
+
+import { useState, useEffect, useCallback } from 'react';
+import { Sidebar } from '../components/Sidebar';
+import { Overview } from '../components/sections/Overview';
+import { Vendors } from '../components/sections/Vendors';
+import { Products } from '../components/sections/Products';
+import { Orders } from '../components/sections/Orders';
+import { Revenue } from '../components/sections/Revenue';
+import { Leads } from '../components/sections/Leads';
+import { Growth } from '../components/sections/Growth';
+import {
+  fetchPublicStats, fetchVendors, fetchOrders, computeKPIs,
+  type VoomStats, type Vendor, type Order, type DashboardKPIs,
+} from '../lib/voomApi';
+import { toast } from 'sonner';
+
+type Section = 'overview' | 'vendors' | 'products' | 'orders' | 'revenue' | 'leads' | 'growth' | 'settings';
+
+const SECTION_LABELS: Record<Section, string> = {
+  overview: 'Overview',
+  vendors: 'Vendors',
+  products: 'Products',
+  orders: 'Orders',
+  revenue: 'Revenue',
+  leads: 'Lead Pipeline',
+  growth: 'Growth',
+  settings: 'Settings',
+};
+
 export default function Home() {
-  // If theme is switchable in App.tsx, we can implement theme toggling like this:
-  // const { theme, toggleTheme } = useTheme();
+  const [activeSection, setActiveSection] = useState<Section>('overview');
+  const [loading, setLoading] = useState(true);
+  const [liveStatus, setLiveStatus] = useState<'live' | 'warn' | 'error'>('warn');
+
+  const [publicStats, setPublicStats] = useState<VoomStats>({ totalProducts: 0, totalVendors: 0, totalCategories: 0 });
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [kpis, setKpis] = useState<DashboardKPIs | null>(null);
+
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [stats, vendorList, orderList] = await Promise.all([
+        fetchPublicStats(),
+        fetchVendors(),
+        fetchOrders(),
+      ]);
+      setPublicStats(stats);
+      setVendors(vendorList);
+      setOrders(orderList);
+      setKpis(computeKPIs(stats, vendorList, orderList, 95));
+      setLastUpdated(new Date());
+      // Check if we got real data or mock
+      if (stats.totalProducts > 0 && vendorList.length > 0) {
+        setLiveStatus('live');
+      } else {
+        setLiveStatus('warn');
+      }
+    } catch (err) {
+      setLiveStatus('error');
+      toast.error('Could not connect to VOOM backend. Showing demo data.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleNavigate = (section: string) => {
+    if (section === 'settings') {
+      toast.info('Settings panel coming soon.');
+      return;
+    }
+    setActiveSection(section as Section);
+  };
+
+  const renderSection = () => {
+    if (!kpis) return null;
+    switch (activeSection) {
+      case 'overview': return <Overview kpis={kpis} orders={orders} vendors={vendors} loading={loading} />;
+      case 'vendors': return <Vendors vendors={vendors} />;
+      case 'products': return <Products kpis={kpis} />;
+      case 'orders': return <Orders orders={orders} kpis={kpis} />;
+      case 'revenue': return <Revenue orders={orders} kpis={kpis} />;
+      case 'leads': return <Leads kpis={kpis} />;
+      case 'growth': return <Growth kpis={kpis} />;
+      default: return <Overview kpis={kpis} orders={orders} vendors={vendors} loading={loading} />;
+    }
+  };
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <main>
-        {/* Example: lucide-react for icons */}
-        <Loader2 className="animate-spin" />
-        Example Page
-        {/* Example: Streamdown for markdown rendering */}
-        <Streamdown>Any **markdown** content</Streamdown>
-        <Button variant="default">Example Button</Button>
+    <div style={{
+      minHeight: '100vh',
+      background: '#FFFFFF',
+      position: 'relative',
+      overflow: 'hidden',
+    }}>
+      {/* Background glass orbs */}
+      <div style={{
+        position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0,
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          position: 'absolute', top: -120, right: -80, width: 500, height: 500,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(79,70,229,0.06) 0%, transparent 70%)',
+          filter: 'blur(40px)',
+        }} />
+        <div style={{
+          position: 'absolute', bottom: -100, left: 200, width: 400, height: 400,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(5,150,105,0.05) 0%, transparent 70%)',
+          filter: 'blur(40px)',
+        }} />
+        <div style={{
+          position: 'absolute', top: '40%', right: '30%', width: 300, height: 300,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(124,58,237,0.04) 0%, transparent 70%)',
+          filter: 'blur(30px)',
+        }} />
+      </div>
+
+      {/* Sidebar */}
+      <Sidebar
+        activeSection={activeSection}
+        onNavigate={handleNavigate}
+        liveStatus={liveStatus}
+      />
+
+      {/* Main Content */}
+      <main style={{
+        marginLeft: 240,
+        minHeight: '100vh',
+        position: 'relative',
+        zIndex: 1,
+        transition: 'margin-left 0.3s cubic-bezier(0.34,1.56,0.64,1)',
+      }}>
+        {/* Top Header Bar */}
+        <header style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 40,
+          background: 'rgba(255,255,255,0.85)',
+          backdropFilter: 'blur(20px)',
+          borderBottom: '1px solid rgba(79,70,229,0.06)',
+          padding: '0 2rem',
+          height: 64,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}>
+          <div>
+            <h1 style={{
+              fontFamily: 'Plus Jakarta Sans, sans-serif',
+              fontSize: '1.0625rem',
+              fontWeight: 700,
+              color: '#0F172A',
+              margin: 0,
+            }}>
+              {SECTION_LABELS[activeSection]}
+            </h1>
+            <p style={{ fontSize: '0.72rem', color: '#94A3B8', margin: 0 }}>
+              VOOM Ghana · CEO Dashboard · Updated {lastUpdated.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            {/* Date Range Badge */}
+            <div style={{
+              padding: '0.375rem 0.875rem',
+              borderRadius: '0.625rem',
+              background: 'rgba(79,70,229,0.06)',
+              border: '1px solid rgba(79,70,229,0.12)',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              color: '#4F46E5',
+              fontFamily: 'Space Grotesk',
+            }}>
+              Last 30 days
+            </div>
+
+            {/* Refresh Button */}
+            <button
+              onClick={loadData}
+              style={{
+                width: 36, height: 36, borderRadius: '0.625rem',
+                background: 'rgba(79,70,229,0.08)',
+                border: 'none', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#4F46E5',
+              }}
+              title="Refresh data"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="23 4 23 10 17 10"/>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+            </button>
+
+            {/* Backend Config Button */}
+            <button
+              onClick={() => toast.info('Set VITE_VOOM_API_URL in your .env to connect to the live VOOM backend.')}
+              style={{
+                padding: '0.375rem 0.875rem',
+                borderRadius: '0.625rem',
+                background: liveStatus === 'live' ? 'rgba(5,150,105,0.08)' : 'rgba(217,119,6,0.08)',
+                border: `1px solid ${liveStatus === 'live' ? 'rgba(5,150,105,0.2)' : 'rgba(217,119,6,0.2)'}`,
+                fontSize: '0.75rem', fontWeight: 600,
+                color: liveStatus === 'live' ? '#059669' : '#D97706',
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '0.375rem',
+              }}
+            >
+              <div className={`status-orb ${liveStatus}`} style={{ width: 6, height: 6 }} />
+              {liveStatus === 'live' ? 'Live Backend' : 'Demo Mode'}
+            </button>
+          </div>
+        </header>
+
+        {/* Page Content */}
+        <div style={{ padding: '1.75rem 2rem 3rem' }}>
+          {loading && !kpis ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{
+                  width: 56, height: 56, borderRadius: '50%',
+                  border: '3px solid rgba(79,70,229,0.15)',
+                  borderTopColor: '#4F46E5',
+                  animation: 'spin 0.8s linear infinite',
+                  margin: '0 auto 1.25rem',
+                }} />
+                <p style={{ fontFamily: 'Plus Jakarta Sans', fontWeight: 600, color: '#0F172A', marginBottom: '0.25rem' }}>
+                  Loading VOOM Dashboard
+                </p>
+                <p style={{ fontSize: '0.8125rem', color: '#94A3B8' }}>
+                  Connecting to backend...
+                </p>
+              </div>
+            </div>
+          ) : (
+            renderSection()
+          )}
+        </div>
       </main>
+
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }
