@@ -5,14 +5,17 @@
   "license": "MIT",
   "scripts": {
     "dev": "vite --host",
-    "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
+    "build": "vite build && esbuild server/index.ts server/routes.ts server/db.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "NODE_ENV=production node dist/index.js",
     "preview": "vite preview --host",
     "check": "tsc --noEmit",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
+    "@neondatabase/serverless": "^1.0.2",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-aspect-ratio": "^1.1.7",
@@ -43,6 +46,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "drizzle-orm": "^0.45.1",
     "embla-carousel-react": "^8.6.0",
     "express": "^4.21.2",
     "framer-motion": "^12.23.22",
@@ -62,6 +66,7 @@
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^1.1.2",
     "wouter": "^3.3.5",
+    "ws": "^8.19.0",
     "zod": "^4.1.12"
   },
   "devDependencies": {
@@ -73,9 +78,12 @@
     "@types/node": "^24.7.0",
     "@types/react": "^19.2.1",
     "@types/react-dom": "^19.2.1",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^5.0.4",
     "add": "^2.0.6",
     "autoprefixer": "^10.4.20",
+    "drizzle-kit": "^0.31.10",
+    "drizzle-zod": "^0.8.3",
     "esbuild": "^0.25.0",
     "pnpm": "^10.15.1",
     "postcss": "^8.4.47",

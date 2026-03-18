@@ -1,12 +1,10 @@
 /**
- * VOOM Ghana Backend API Client
- * Connects to the VOOM tRPC backend at voom-ghana-marketplace
- * Falls back to realistic mock data when backend is unavailable
+ * VOOM CEO Dashboard API Client
+ * Connects to the Render PostgreSQL database via local API routes
+ * Falls back to realistic mock data when database is unavailable
  *
  * Design: Arctic Glass — all data flows through this single module
  */
-
-const VOOM_API_BASE = import.meta.env.VITE_VOOM_API_URL || '';
 
 // ─── Types mirrored from VOOM backend schema ───
 export interface VoomStats {
@@ -58,20 +56,12 @@ export interface Product {
   condition: string;
 }
 
-// ─── tRPC-style fetch helper ───
-async function trpcQuery<T>(path: string, input?: Record<string, unknown>): Promise<T | null> {
+// ─── API fetch helper ───
+async function apiGet<T>(path: string): Promise<T | null> {
   try {
-    const url = new URL(`/trpc/${path}`, VOOM_API_BASE || window.location.origin);
-    if (input) {
-      url.searchParams.set('input', JSON.stringify(input));
-    }
-    const res = await fetch(url.toString(), {
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-    });
+    const res = await fetch(path);
     if (!res.ok) return null;
-    const json = await res.json();
-    return json?.result?.data ?? null;
+    return await res.json();
   } catch {
     return null;
   }
@@ -79,8 +69,14 @@ async function trpcQuery<T>(path: string, input?: Record<string, unknown>): Prom
 
 // ─── Public Stats ───
 export async function fetchPublicStats(): Promise<VoomStats> {
-  const data = await trpcQuery<VoomStats>('publicStats');
-  if (data) return data;
+  const data = await apiGet<AdminStats & { source: string }>('/api/stats');
+  if (data && data.source === 'database') {
+    return {
+      totalProducts: data.totalProducts,
+      totalVendors: data.totalVendors,
+      totalCategories: 0, // Not tracked in Voom DB, computed from car types
+    };
+  }
   // Realistic mock for VOOM early-stage
   return {
     totalProducts: 247,
@@ -91,23 +87,28 @@ export async function fetchPublicStats(): Promise<VoomStats> {
 
 // ─── Vendor List ───
 export async function fetchVendors(): Promise<Vendor[]> {
-  const data = await trpcQuery<Vendor[]>('vendor.list');
-  if (data && data.length > 0) return data;
+  const result = await apiGet<{ source: string; data: Vendor[] }>('/api/vendors');
+  if (result?.source === 'database' && result.data.length > 0) return result.data;
   return generateMockVendors();
 }
 
 // ─── All Vendors (admin) ───
 export async function fetchAllVendors(): Promise<Vendor[]> {
-  const data = await trpcQuery<Vendor[]>('admin.vendors');
-  if (data && data.length > 0) return data;
-  return generateMockVendors();
+  return fetchVendors();
 }
 
 // ─── Orders ───
 export async function fetchOrders(): Promise<Order[]> {
-  const data = await trpcQuery<Order[]>('admin.orders');
-  if (data && data.length > 0) return data;
+  const result = await apiGet<{ source: string; data: Order[] }>('/api/orders');
+  if (result?.source === 'database' && result.data.length > 0) return result.data;
   return generateMockOrders();
+}
+
+// ─── Products ───
+export async function fetchProducts(): Promise<Product[]> {
+  const result = await apiGet<{ source: string; data: Product[] }>('/api/products');
+  if (result?.source === 'database' && result.data.length > 0) return result.data;
+  return generateMockProducts();
 }
 
 // ─── Mock Data Generators (realistic VOOM Ghana data) ───
@@ -157,6 +158,22 @@ function generateMockOrders(): Order[] {
   }));
 }
 
+function generateMockProducts(): Product[] {
+  const makes = ['Toyota', 'Honda', 'Hyundai', 'Nissan', 'Mercedes-Benz', 'BMW', 'Kia'];
+  const models = ['Corolla', 'Civic', 'Accent', 'Altima', 'C-Class', '3 Series', 'Sportage'];
+  return Array.from({ length: 30 }, (_, i) => ({
+    id: i + 1,
+    name: `${makes[i % makes.length]} ${models[i % models.length]} ${2018 + (i % 7)}`,
+    price: String(Math.floor(Math.random() * 500 + 100)),
+    status: i < 25 ? 'active' : 'inactive',
+    views: Math.floor(Math.random() * 500),
+    createdAt: new Date(Date.now() - Math.random() * 60 * 86400000).toISOString(),
+    vehicleMake: makes[i % makes.length],
+    vehicleModel: models[i % models.length],
+    condition: i < 20 ? 'available' : 'unavailable',
+  }));
+}
+
 // ─── Derived KPI Calculations ───
 export interface DashboardKPIs {
   // Supply
@@ -195,7 +212,7 @@ export function computeKPIs(
   const totalVendors = vendors.length || publicStats.totalVendors;
 
   const totalGMV = orders.reduce((sum, o) => sum + parseFloat(o.totalAmount || '0'), 0);
-  const completedOrders = orders.filter(o => o.status === 'delivered').length;
+  const completedOrders = orders.filter(o => o.status === 'delivered' || o.status === 'completed').length;
   const avgOrderValue = orders.length > 0 ? totalGMV / orders.length : 0;
 
   return {
