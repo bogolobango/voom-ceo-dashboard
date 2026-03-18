@@ -1,12 +1,16 @@
 /**
  * VOOM CEO Dashboard API Client
- * Connects to the Render PostgreSQL database via local API routes
- * Falls back to realistic mock data when database is unavailable
- *
- * Design: Arctic Glass — all data flows through this single module
+ * Connects to the Render PostgreSQL database via local /api routes.
+ * Returns REAL data when connected, EMPTY state when not.
+ * Never fabricates numbers — a CEO dashboard must not lie.
  */
 
-// ─── Types mirrored from VOOM backend schema ───
+// ─── Data source tracking ───
+export type DataSource = 'database' | 'offline';
+let _dataSource: DataSource = 'offline';
+export function getDataSource(): DataSource { return _dataSource; }
+
+// ─── Types ───
 export interface VoomStats {
   totalProducts: number;
   totalVendors: number;
@@ -71,25 +75,25 @@ async function apiGet<T>(path: string): Promise<T | null> {
 export async function fetchPublicStats(): Promise<VoomStats> {
   const data = await apiGet<AdminStats & { source: string }>('/api/stats');
   if (data && data.source === 'database') {
+    _dataSource = 'database';
     return {
       totalProducts: data.totalProducts,
       totalVendors: data.totalVendors,
-      totalCategories: 0, // Not tracked in Voom DB, computed from car types
+      totalCategories: 0,
     };
   }
-  // Realistic mock for VOOM early-stage
-  return {
-    totalProducts: 247,
-    totalVendors: 34,
-    totalCategories: 18,
-  };
+  _dataSource = 'offline';
+  return { totalProducts: 0, totalVendors: 0, totalCategories: 0 };
 }
 
 // ─── Vendor List ───
 export async function fetchVendors(): Promise<Vendor[]> {
   const result = await apiGet<{ source: string; data: Vendor[] }>('/api/vendors');
-  if (result?.source === 'database' && result.data.length > 0) return result.data;
-  return generateMockVendors();
+  if (result?.source === 'database') {
+    _dataSource = 'database';
+    return result.data;
+  }
+  return [];
 }
 
 // ─── All Vendors (admin) ───
@@ -100,102 +104,39 @@ export async function fetchAllVendors(): Promise<Vendor[]> {
 // ─── Orders ───
 export async function fetchOrders(): Promise<Order[]> {
   const result = await apiGet<{ source: string; data: Order[] }>('/api/orders');
-  if (result?.source === 'database' && result.data.length > 0) return result.data;
-  return generateMockOrders();
+  if (result?.source === 'database') {
+    _dataSource = 'database';
+    return result.data;
+  }
+  return [];
 }
 
 // ─── Products ───
 export async function fetchProducts(): Promise<Product[]> {
   const result = await apiGet<{ source: string; data: Product[] }>('/api/products');
-  if (result?.source === 'database' && result.data.length > 0) return result.data;
-  return generateMockProducts();
-}
-
-// ─── Mock Data Generators (realistic VOOM Ghana data) ───
-function generateMockVendors(): Vendor[] {
-  const vendors = [
-    { name: 'KnK Auto Accessories', city: 'Abossey Okai', status: 'approved' as const, sales: 142, rating: '4.8' },
-    { name: 'Mends Auto Parts', city: 'Accra', status: 'approved' as const, sales: 98, rating: '4.6' },
-    { name: 'Roy Auto Parts', city: 'Abossey Okai', status: 'approved' as const, sales: 211, rating: '4.9' },
-    { name: 'Kafa Auto Parts', city: 'Darkuman', status: 'approved' as const, sales: 67, rating: '4.5' },
-    { name: 'BIG SHOTS AUTOPARTS', city: 'Abossey Okai', status: 'approved' as const, sales: 334, rating: '4.7' },
-    { name: 'Santana Auto Gh', city: 'Accra', status: 'approved' as const, sales: 89, rating: '4.4' },
-    { name: 'Auto Auctions Ghana', city: 'Tema', status: 'approved' as const, sales: 156, rating: '4.6' },
-    { name: 'PJ1 BATTERIES', city: 'Kwashieman', status: 'approved' as const, sales: 203, rating: '4.8' },
-    { name: 'E5 Cooling Global', city: 'Accra', status: 'approved' as const, sales: 45, rating: '4.3' },
-    { name: 'Control Board Guru', city: 'Adenta', status: 'approved' as const, sales: 78, rating: '4.7' },
-    { name: 'Asare Tank', city: 'Pokuase', status: 'approved' as const, sales: 34, rating: '4.2' },
-    { name: 'Ghana Auto Spares', city: 'Kumasi', status: 'pending' as const, sales: 0, rating: null },
-    { name: 'Accra Motor Parts', city: 'Accra', status: 'pending' as const, sales: 0, rating: null },
-    { name: 'Volta Auto Hub', city: 'Ho', status: 'pending' as const, sales: 0, rating: null },
-    { name: 'Northern Spares Ltd', city: 'Tamale', status: 'rejected' as const, sales: 0, rating: null },
-  ];
-  return vendors.map((v, i) => ({
-    id: i + 1,
-    businessName: v.name,
-    city: v.city,
-    region: 'Greater Accra',
-    status: v.status,
-    rating: v.rating,
-    totalSales: v.sales,
-    createdAt: new Date(Date.now() - Math.random() * 30 * 86400000).toISOString(),
-    phone: `+233${Math.floor(200000000 + Math.random() * 799999999)}`,
-  }));
-}
-
-function generateMockOrders(): Order[] {
-  const statuses = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
-  const cities = ['Accra', 'Tema', 'Kumasi', 'Abossey Okai', 'Darkuman', 'Adenta'];
-  const buyers = ['Kwame Asante', 'Ama Boateng', 'Kofi Mensah', 'Abena Owusu', 'Yaw Darko', 'Akua Sarpong'];
-  return Array.from({ length: 48 }, (_, i) => ({
-    id: i + 1,
-    orderNumber: `VOM-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
-    totalAmount: (Math.random() * 2000 + 50).toFixed(2),
-    status: statuses[Math.floor(Math.random() * statuses.length)],
-    createdAt: new Date(Date.now() - Math.random() * 30 * 86400000).toISOString(),
-    buyerName: buyers[Math.floor(Math.random() * buyers.length)],
-    shippingCity: cities[Math.floor(Math.random() * cities.length)],
-  }));
-}
-
-function generateMockProducts(): Product[] {
-  const makes = ['Toyota', 'Honda', 'Hyundai', 'Nissan', 'Mercedes-Benz', 'BMW', 'Kia'];
-  const models = ['Corolla', 'Civic', 'Accent', 'Altima', 'C-Class', '3 Series', 'Sportage'];
-  return Array.from({ length: 30 }, (_, i) => ({
-    id: i + 1,
-    name: `${makes[i % makes.length]} ${models[i % models.length]} ${2018 + (i % 7)}`,
-    price: String(Math.floor(Math.random() * 500 + 100)),
-    status: i < 25 ? 'active' : 'inactive',
-    views: Math.floor(Math.random() * 500),
-    createdAt: new Date(Date.now() - Math.random() * 60 * 86400000).toISOString(),
-    vehicleMake: makes[i % makes.length],
-    vehicleModel: models[i % models.length],
-    condition: i < 20 ? 'available' : 'unavailable',
-  }));
+  if (result?.source === 'database') {
+    _dataSource = 'database';
+    return result.data;
+  }
+  return [];
 }
 
 // ─── Derived KPI Calculations ───
 export interface DashboardKPIs {
-  // Supply
   totalVendors: number;
   approvedVendors: number;
   pendingVendors: number;
   vendorApprovalRate: number;
-  // Demand
   totalProducts: number;
   totalCategories: number;
-  // Revenue
   totalGMV: number;
   avgOrderValue: number;
-  // Orders
   totalOrders: number;
   completedOrders: number;
   orderCompletionRate: number;
-  // Leads
   totalLeads: number;
   leadsContacted: number;
   leadConversionRate: number;
-  // Growth (vs prev 30d)
   vendorGrowth: number;
   orderGrowth: number;
   gmvGrowth: number;
@@ -205,7 +146,7 @@ export function computeKPIs(
   publicStats: VoomStats,
   vendors: Vendor[],
   orders: Order[],
-  leadsCount: number = 95
+  leadsCount: number = 0
 ): DashboardKPIs {
   const approved = vendors.filter(v => v.status === 'approved').length;
   const pending = vendors.filter(v => v.status === 'pending').length;
@@ -228,11 +169,12 @@ export function computeKPIs(
     completedOrders,
     orderCompletionRate: orders.length > 0 ? (completedOrders / orders.length) * 100 : 0,
     totalLeads: leadsCount,
-    leadsContacted: Math.floor(leadsCount * 0.38),
-    leadConversionRate: 8.4,
-    vendorGrowth: 23.5,
-    orderGrowth: 41.2,
-    gmvGrowth: 38.7,
+    leadsContacted: 0,
+    leadConversionRate: 0,
+    // Growth: compute from real data or show 0
+    vendorGrowth: 0,
+    orderGrowth: 0,
+    gmvGrowth: 0,
   };
 }
 
@@ -240,7 +182,6 @@ export function computeKPIs(
 export function generateRevenueChartData(orders: Order[]) {
   const byDay = new Map<string, number>();
   const now = new Date();
-  // Initialize last 30 days
   for (let i = 29; i >= 0; i--) {
     const d = new Date(now);
     d.setDate(d.getDate() - i);
