@@ -16,8 +16,8 @@ import { Revenue } from '../components/sections/Revenue';
 import { Leads } from '../components/sections/Leads';
 import { Growth } from '../components/sections/Growth';
 import {
-  fetchPublicStats, fetchVendors, fetchOrders, computeKPIs,
-  type VoomStats, type Vendor, type Order, type DashboardKPIs,
+  fetchPublicStats, fetchVendors, fetchOrders, computeKPIs, getDataSource,
+  type VoomStats, type Vendor, type Order, type DashboardKPIs, type DataSource,
 } from '../lib/voomApi';
 import { toast } from 'sonner';
 
@@ -48,6 +48,7 @@ export default function Home() {
   const [activeSection, setActiveSection] = useState<Section>('overview');
   const [loading, setLoading] = useState(true);
   const [liveStatus, setLiveStatus] = useState<'live' | 'warn' | 'error'>('warn');
+  const [dataSource, setDataSource] = useState<DataSource>('offline');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const isMobile = useIsMobile();
 
@@ -68,12 +69,20 @@ export default function Home() {
       setPublicStats(stats);
       setVendors(vendorList);
       setOrders(orderList);
-      setKpis(computeKPIs(stats, vendorList, orderList, 95));
+      setKpis(computeKPIs(stats, vendorList, orderList, 0));
       setLastUpdated(new Date());
-      setLiveStatus(stats.totalProducts > 0 && vendorList.length > 0 ? 'live' : 'warn');
+      const source = getDataSource();
+      setDataSource(source);
+      if (source === 'database') {
+        setLiveStatus('live');
+      } else {
+        setLiveStatus('warn');
+        toast.error('Not connected to database. Set DATABASE_URL and restart server.');
+      }
     } catch {
       setLiveStatus('error');
-      toast.error('Could not connect to VOOM backend. Showing demo data.');
+      setDataSource('offline');
+      toast.error('Could not connect to VOOM backend. Check server is running.');
     } finally {
       setLoading(false);
     }
@@ -248,19 +257,27 @@ export default function Home() {
               </svg>
             </button>
             <button
-              onClick={() => toast.info('Set VITE_VOOM_API_URL in .env to connect to the live VOOM backend.')}
+              onClick={() => {
+                if (dataSource === 'database') {
+                  toast.success('Connected to Render PostgreSQL database — showing live data.');
+                } else {
+                  toast.error('Not connected to database. Set DATABASE_URL in .env and run: pnpm dev');
+                }
+              }}
               style={{
                 padding: '0.3rem 0.625rem', borderRadius: '0.5rem',
-                background: liveStatus === 'live' ? 'rgba(5,150,105,0.08)' : 'rgba(217,119,6,0.08)',
-                border: `1px solid ${liveStatus === 'live' ? 'rgba(5,150,105,0.2)' : 'rgba(217,119,6,0.2)'}`,
+                background: dataSource === 'database' ? 'rgba(5,150,105,0.08)' : 'rgba(239,68,68,0.08)',
+                border: `1px solid ${dataSource === 'database' ? 'rgba(5,150,105,0.2)' : 'rgba(239,68,68,0.2)'}`,
                 fontSize: '0.7rem', fontWeight: 600,
-                color: liveStatus === 'live' ? '#059669' : '#D97706',
+                color: dataSource === 'database' ? '#059669' : '#EF4444',
                 cursor: 'pointer',
                 display: 'flex', alignItems: 'center', gap: '0.3rem',
               }}
             >
               <div className={`status-orb ${liveStatus}`} style={{ width: 6, height: 6 }} />
-              {isMobile ? (liveStatus === 'live' ? 'Live' : 'Demo') : (liveStatus === 'live' ? 'Live Backend' : 'Demo Mode')}
+              {dataSource === 'database'
+                ? (isMobile ? 'Live DB' : 'Render DB Connected')
+                : (isMobile ? 'Offline' : 'No Database')}
             </button>
           </div>
         </header>
