@@ -4,7 +4,11 @@
  * This allows the dashboard to connect to the database without a separate Express process.
  */
 import type { Plugin, ViteDevServer } from "vite";
+import dns from "node:dns";
 import pg from "pg";
+
+// Force IPv4 — the v0 sandbox does not support IPv6 outbound connections
+dns.setDefaultResultOrder("ipv4first");
 
 const { Pool } = pg;
 
