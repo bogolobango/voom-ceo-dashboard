@@ -4,15 +4,22 @@
  * This allows the dashboard to connect to the database without a separate Express process.
  */
 import type { Plugin, ViteDevServer } from "vite";
-import dns from "node:dns";
+import { lookup } from "node:dns/promises";
 import pg from "pg";
-
-// Force IPv4 — the v0 sandbox does not support IPv6 outbound connections
-dns.setDefaultResultOrder("ipv4first");
 
 const { Pool } = pg;
 
 let pool: pg.Pool | null = null;
+
+/**
+ * Custom DNS lookup that forces IPv4 resolution.
+ * The v0 sandbox does not support IPv6 outbound connections.
+ */
+function ipv4Lookup(hostname: string, options: any, cb: Function) {
+  lookup(hostname, { family: 4 })
+    .then((result) => cb(null, result.address, 4))
+    .catch((err) => cb(err));
+}
 
 function getPool(): pg.Pool | null {
   if (pool) return pool;
@@ -21,15 +28,24 @@ function getPool(): pg.Pool | null {
     console.warn("[vite-api] DATABASE_URL not set — API routes will return offline data.");
     return null;
   }
+
+  // Parse the connection string to extract host/port/user/password/database
+  const parsed = new URL(url);
   pool = new Pool({
-    connectionString: url,
+    host: parsed.hostname,
+    port: Number(parsed.port) || 5432,
+    user: decodeURIComponent(parsed.username),
+    password: decodeURIComponent(parsed.password),
+    database: parsed.pathname.replace("/", ""),
     max: 5,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
     ssl: { rejectUnauthorized: false },
+    // Force IPv4 DNS resolution at the connection level
+    lookup: ipv4Lookup as any,
   });
   pool.on("error", (err) => console.error("[vite-api] Pool error:", err.message));
-  console.log("[vite-api] PostgreSQL pool created.");
+  console.log("[vite-api] PostgreSQL pool created (IPv4 forced).");
   return pool;
 }
 
