@@ -1,223 +1,172 @@
 /**
  * Vite Dev Server API Plugin
- * Embeds Express-style API routes directly into Vite's dev server middleware.
- * This allows the dashboard to connect to the database without a separate Express process.
+ * Handles /api/* routes via Supabase JS client during development.
  */
 import type { Plugin, ViteDevServer } from "vite";
-import { lookup } from "node:dns/promises";
-import pg from "pg";
+import { createClient } from "@supabase/supabase-js";
 
-const { Pool } = pg;
+let _supabase: ReturnType<typeof createClient> | null = null;
 
-let pool: pg.Pool | null = null;
-
-/**
- * Custom DNS lookup that forces IPv4 resolution.
- * The v0 sandbox does not support IPv6 outbound connections.
- */
-function ipv4Lookup(hostname: string, options: any, cb: Function) {
-  lookup(hostname, { family: 4 })
-    .then((result) => cb(null, result.address, 4))
-    .catch((err) => cb(err));
-}
-
-function getPool(): pg.Pool | null {
-  if (pool) return pool;
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    console.warn("[vite-api] DATABASE_URL not set — API routes will return offline data.");
+function getSupabase() {
+  if (_supabase) return _supabase;
+  const url = process.env.VITE_SUPABASE_URL;
+  const key = process.env.VITE_SUPABASE_ANON_KEY;
+  if (!url || !key) {
+    console.warn("[vite-api] VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY not set — API routes will return offline data.");
     return null;
   }
-
-  // Parse the connection string to extract host/port/user/password/database
-  const parsed = new URL(url);
-  pool = new Pool({
-    host: parsed.hostname,
-    port: Number(parsed.port) || 5432,
-    user: decodeURIComponent(parsed.username),
-    password: decodeURIComponent(parsed.password),
-    database: parsed.pathname.replace("/", ""),
-    max: 5,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
-    ssl: { rejectUnauthorized: false },
-    // Force IPv4 DNS resolution at the connection level
-    lookup: ipv4Lookup as any,
-  });
-  pool.on("error", (err) => console.error("[vite-api] Pool error:", err.message));
-  console.log("[vite-api] PostgreSQL pool created (IPv4 forced).");
-  return pool;
+  _supabase = createClient(url, key);
+  console.log("[vite-api] Supabase client ready.");
+  return _supabase;
 }
 
-/** Helper: run a query and return rows */
-async function query(text: string, params?: unknown[]): Promise<any[]> {
-  const p = getPool();
-  if (!p) return [];
-  const res = await p.query(text, params);
-  return res.rows;
-}
-
-/** Send JSON */
 function json(res: any, data: unknown, status = 200) {
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(data));
+}
+
+function monthKey(d: string) {
+  return d.slice(0, 7);
 }
 
 export default function viteApiPlugin(): Plugin {
   return {
     name: "voom-api",
     configureServer(server: ViteDevServer) {
-      // Register middleware BEFORE Vite's own middleware
       server.middlewares.use(async (req, res, next) => {
-        const url = req.url || "";
-
-        // Only handle /api/* routes
+        const url = (req.url || "").split("?")[0];
         if (!url.startsWith("/api/")) return next();
+
+        const sb = getSupabase();
 
         try {
           // ─── /api/health ───
           if (url === "/api/health") {
-            const p = getPool();
-            if (!p) {
-              return json(res, {
-                status: "ok",
-                database: "not_configured",
-                hint: "Set DATABASE_URL in environment variables",
-              });
-            }
-            try {
-              const rows = await query("SELECT NOW() as now, current_database() as db_name");
-              return json(res, {
-                status: "ok",
-                database: "connected",
-                serverTime: rows[0]?.now,
-                dbName: rows[0]?.db_name,
-              });
-            } catch (err: any) {
-              return json(res, { status: "ok", database: "error", error: err.message });
-            }
+            if (!sb) return json(res, { status: "ok", database: "not_configured", hint: "Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY" });
+            const { count, error } = await sb.from("users").select("*", { count: "exact", head: true });
+            if (error) return json(res, { status: "ok", database: "error", error: error.message });
+            return json(res, { status: "ok", database: "connected", userCount: count });
           }
 
           // ─── /api/stats ───
           if (url === "/api/stats") {
-            const p = getPool();
-            if (!p) return json(res, { source: "offline" });
+            if (!sb) return json(res, { source: "offline" });
 
-            const [userCount] = await query("SELECT COUNT(*)::int as count FROM users");
-            const [carCount] = await query("SELECT COUNT(*)::int as count FROM cars");
-            const [bookingCount] = await query("SELECT COUNT(*)::int as count FROM bookings");
-            const [hostCount] = await query("SELECT COUNT(*)::int as count FROM users WHERE is_host = true");
-            const [pendingHostCount] = await query(
-              "SELECT COUNT(*)::int as count FROM users WHERE verification_status = 'pending'"
-            );
-            const [revenueResult] = await query("SELECT COALESCE(SUM(total_amount), 0)::text as total FROM bookings");
+            const [
+              { count: totalUsers },
+              { count: totalVendors },
+              { count: totalProducts },
+              { count: totalOrders },
+              { count: totalCategories },
+              { count: totalPartRequests },
+              { count: pendingVendors },
+            ] = await Promise.all([
+              sb.from("users").select("*", { count: "exact", head: true }),
+              sb.from("vendors").select("*", { count: "exact", head: true }),
+              sb.from("products").select("*", { count: "exact", head: true }),
+              sb.from("orders").select("*", { count: "exact", head: true }),
+              sb.from("categories").select("*", { count: "exact", head: true }),
+              sb.from("part_requests").select("*", { count: "exact", head: true }),
+              sb.from("vendors").select("*", { count: "exact", head: true }).eq("status", "pending"),
+            ]);
+
+            const { data: orderRevenue } = await sb.from("orders").select("totalAmount");
+            const totalRevenue = (orderRevenue || []).reduce((s: number, o: any) => s + (Number(o.totalAmount) || 0), 0);
 
             return json(res, {
               source: "database",
-              totalVendors: hostCount?.count ?? 0,
-              totalProducts: carCount?.count ?? 0,
-              totalOrders: bookingCount?.count ?? 0,
-              totalUsers: userCount?.count ?? 0,
-              pendingVendors: pendingHostCount?.count ?? 0,
-              totalRevenue: revenueResult?.total ?? "0",
+              totalUsers: totalUsers ?? 0,
+              totalVendors: totalVendors ?? 0,
+              totalProducts: totalProducts ?? 0,
+              totalOrders: totalOrders ?? 0,
+              totalCategories: totalCategories ?? 0,
+              totalPartRequests: totalPartRequests ?? 0,
+              pendingVendors: pendingVendors ?? 0,
+              totalRevenue: String(totalRevenue),
+              totalCommission: "0",
             });
           }
 
           // ─── /api/vendors ───
           if (url === "/api/vendors") {
-            const p = getPool();
-            if (!p) return json(res, { source: "offline", data: [] });
+            if (!sb) return json(res, { source: "offline", data: [] });
 
-            const hosts = await query(`
-              SELECT id, full_name, username, phone_number, verification_status, created_at
-              FROM users WHERE is_host = true ORDER BY created_at DESC
-            `);
+            const { data: allVendors, error } = await sb
+              .from("vendors")
+              .select("id, businessName, phone, whatsapp, city, region, status, verified, rating, totalSales, tier, isFeatured, createdAt")
+              .order("createdAt", { ascending: false });
 
-            const carCounts = await query(`
-              SELECT host_id, COUNT(*)::int as count FROM cars GROUP BY host_id
-            `);
-            const carCountMap = new Map(carCounts.map((c: any) => [c.host_id, c.count]));
+            if (error) throw error;
 
-            const bookingStats = await query(`
-              SELECT host_id, COUNT(*)::int as count, COALESCE(SUM(total_amount), 0) as revenue
-              FROM bookings GROUP BY host_id
-            `);
-            const bookingMap = new Map(
-              bookingStats.map((b: any) => [b.host_id, { count: b.count, revenue: b.revenue }])
-            );
+            const vendorIds = (allVendors || []).map((v: any) => v.id);
+            const productMap = new Map<number, number>();
+            const orderMap = new Map<number, { count: number; revenue: number }>();
 
-            const ratings = await query(`
-              SELECT c.host_id, AVG(r.rating)::numeric(3,1) as avg
-              FROM reviews r INNER JOIN cars c ON r.car_id = c.id
-              GROUP BY c.host_id
-            `);
-            const ratingMap = new Map(ratings.map((r: any) => [r.host_id, r.avg]));
+            if (vendorIds.length > 0) {
+              const { data: productCounts } = await sb.from("products").select("vendorId").in("vendorId", vendorIds);
+              for (const p of productCounts || []) productMap.set(p.vendorId, (productMap.get(p.vendorId) || 0) + 1);
 
-            const hostCities = await query(`
-              SELECT host_id, city, COUNT(*)::int as cnt FROM cars
-              GROUP BY host_id, city ORDER BY COUNT(*) DESC
-            `);
-            const cityMap = new Map<number, string>();
-            for (const row of hostCities) {
-              if (!cityMap.has(row.host_id)) cityMap.set(row.host_id, row.city || "");
+              const { data: orderRows } = await sb.from("orders").select("vendorId, totalAmount").in("vendorId", vendorIds);
+              for (const o of orderRows || []) {
+                const ex = orderMap.get(o.vendorId) || { count: 0, revenue: 0 };
+                orderMap.set(o.vendorId, { count: ex.count + 1, revenue: ex.revenue + Number(o.totalAmount || 0) });
+              }
             }
 
-            const statusMap: Record<string, string> = {
-              approved: "approved",
-              pending: "pending",
-              rejected: "rejected",
-              unverified: "pending",
-            };
-
-            const vendorData = hosts.map((host: any) => {
-              const bStats = bookingMap.get(host.id);
-              const avgRating = ratingMap.get(host.id);
-              return {
-                id: host.id,
-                businessName: host.full_name || host.username,
-                city: cityMap.get(host.id) || null,
-                region: null,
-                status: statusMap[host.verification_status || "unverified"] || "pending",
-                rating: avgRating ? String(Number(avgRating).toFixed(1)) : null,
-                totalSales: bStats?.count || 0,
-                totalRevenue: Number(bStats?.revenue || 0),
-                totalListings: carCountMap.get(host.id) || 0,
-                createdAt: host.created_at?.toISOString?.() || new Date().toISOString(),
-                phone: host.phone_number || "",
-              };
-            });
+            const vendorData = (allVendors || []).map((v: any) => ({
+              id: v.id,
+              businessName: v.businessName,
+              phone: v.phone,
+              whatsapp: v.whatsapp,
+              city: v.city,
+              region: v.region,
+              status: v.status,
+              verified: v.verified,
+              rating: v.rating != null ? String(v.rating) : null,
+              totalSales: v.totalSales || 0,
+              totalRevenue: orderMap.get(v.id)?.revenue ?? 0,
+              totalListings: productMap.get(v.id) || 0,
+              tier: v.tier,
+              isFeatured: v.isFeatured,
+              createdAt: v.createdAt,
+            }));
 
             return json(res, { source: "database", data: vendorData });
           }
 
           // ─── /api/orders ───
           if (url === "/api/orders") {
-            const p = getPool();
-            if (!p) return json(res, { source: "offline", data: [] });
+            if (!sb) return json(res, { source: "offline", data: [] });
 
-            const rows = await query(`
-              SELECT b.id, b.total_amount, b.platform_fee, b.host_payout, b.currency,
-                     b.status, b.pickup_location, b.created_at,
-                     u.full_name as buyer_full_name, u.username as buyer_username,
-                     c.make as car_make, c.model as car_model, c.city as car_city
-              FROM bookings b
-              LEFT JOIN users u ON b.user_id = u.id
-              LEFT JOIN cars c ON b.car_id = c.id
-              ORDER BY b.created_at DESC
-            `);
+            const { data: rows, error } = await sb
+              .from("orders")
+              .select("id, orderNumber, totalAmount, commissionAmount, currency, status, paymentMethod, paymentStatus, shippingCity, shippingRegion, buyerName, buyerPhone, vendorId, createdAt")
+              .order("createdAt", { ascending: false });
 
-            const orderData = rows.map((b: any) => ({
-              id: b.id,
-              orderNumber: `VOM-${String(b.id).padStart(6, "0")}`,
-              totalAmount: String(b.total_amount),
-              platformFee: b.platform_fee,
-              hostPayout: b.host_payout,
-              currency: b.currency,
-              status: b.status,
-              createdAt: b.created_at?.toISOString?.() || new Date().toISOString(),
-              buyerName: b.buyer_full_name || b.buyer_username || null,
-              shippingCity: b.car_city || b.pickup_location,
-              carInfo: b.car_make ? `${b.car_make} ${b.car_model}` : null,
+            if (error) throw error;
+
+            const vendorIds = [...new Set((rows || []).map((o: any) => o.vendorId).filter(Boolean))];
+            const vendorNameMap = new Map<number, string>();
+            if (vendorIds.length > 0) {
+              const { data: vNames } = await sb.from("vendors").select("id, businessName").in("id", vendorIds);
+              for (const v of vNames || []) vendorNameMap.set(v.id, v.businessName);
+            }
+
+            const orderData = (rows || []).map((o: any) => ({
+              id: o.id,
+              orderNumber: o.orderNumber,
+              totalAmount: String(o.totalAmount),
+              commissionAmount: o.commissionAmount ? String(o.commissionAmount) : null,
+              currency: o.currency,
+              status: o.status,
+              paymentMethod: o.paymentMethod,
+              paymentStatus: o.paymentStatus,
+              shippingCity: o.shippingCity,
+              shippingRegion: o.shippingRegion,
+              buyerName: o.buyerName,
+              buyerPhone: o.buyerPhone,
+              vendorName: vendorNameMap.get(o.vendorId) || null,
+              createdAt: o.createdAt,
             }));
 
             return json(res, { source: "database", data: orderData });
@@ -225,77 +174,175 @@ export default function viteApiPlugin(): Plugin {
 
           // ─── /api/products ───
           if (url === "/api/products") {
-            const p = getPool();
-            if (!p) return json(res, { source: "offline", data: [] });
+            if (!sb) return json(res, { source: "offline", data: [] });
 
-            const allCars = await query(`
-              SELECT id, make, model, year, type, daily_rate, currency, location, city,
-                     available, status, rating, rating_count, created_at,
-                     transmission, fuel_type, seats
-              FROM cars ORDER BY created_at DESC
-            `);
+            const { data: allProducts, error } = await sb
+              .from("products")
+              .select("id, vendorId, categoryId, name, price, currency, brand, condition, vehicleMake, vehicleModel, quantity, status, views, whatsappTaps, createdAt")
+              .order("createdAt", { ascending: false });
 
-            const productData = allCars.map((c: any) => ({
-              id: c.id,
-              name: `${c.make} ${c.model} ${c.year}`,
-              price: String(c.daily_rate),
-              currency: c.currency,
-              status: c.status || "active",
-              views: null,
-              createdAt: c.created_at?.toISOString?.() || new Date().toISOString(),
-              vehicleMake: c.make,
-              vehicleModel: c.model,
-              condition: c.available ? "available" : "unavailable",
-              city: c.city || c.location,
-              type: c.type,
-              rating: c.rating,
-              ratingCount: c.rating_count,
+            if (error) throw error;
+
+            const catIds = [...new Set((allProducts || []).map((p: any) => p.categoryId).filter(Boolean))];
+            const catNameMap = new Map<number, string>();
+            if (catIds.length > 0) {
+              const { data: cats } = await sb.from("categories").select("id, name").in("id", catIds);
+              for (const c of cats || []) catNameMap.set(c.id, c.name);
+            }
+
+            const productData = (allProducts || []).map((p: any) => ({
+              id: p.id,
+              name: p.name,
+              price: String(p.price),
+              currency: p.currency,
+              brand: p.brand,
+              condition: p.condition,
+              vehicleMake: p.vehicleMake,
+              vehicleModel: p.vehicleModel,
+              quantity: p.quantity,
+              status: p.status,
+              views: p.views,
+              whatsappTaps: p.whatsappTaps,
+              categoryName: catNameMap.get(p.categoryId) || null,
+              vendorId: p.vendorId,
+              createdAt: p.createdAt,
             }));
 
             return json(res, { source: "database", data: productData });
           }
 
+          // ─── /api/categories ───
+          if (url === "/api/categories") {
+            if (!sb) return json(res, { source: "offline", data: [] });
+
+            const { data: allCategories } = await sb.from("categories").select("id, name, slug, icon, parentId").order("name");
+            const { data: prodCounts } = await sb.from("products").select("categoryId");
+
+            const countMap = new Map<number, number>();
+            for (const p of prodCounts || []) {
+              if (p.categoryId) countMap.set(p.categoryId, (countMap.get(p.categoryId) || 0) + 1);
+            }
+
+            const data = (allCategories || []).map((c: any) => ({
+              id: c.id,
+              name: c.name,
+              slug: c.slug,
+              icon: c.icon,
+              parentId: c.parentId,
+              productCount: countMap.get(c.id) || 0,
+            }));
+
+            return json(res, { source: "database", data });
+          }
+
+          // ─── /api/part-requests ───
+          if (url === "/api/part-requests") {
+            if (!sb) return json(res, { source: "offline", data: [] });
+
+            const { data: allRequests } = await sb
+              .from("part_requests")
+              .select("id, guestName, contactPhone, make, model, year, partName, description, budget, status, createdAt")
+              .order("createdAt", { ascending: false });
+
+            return json(res, { source: "database", data: allRequests || [] });
+          }
+
           // ─── /api/revenue ───
           if (url === "/api/revenue") {
-            const p = getPool();
-            if (!p) return json(res, { source: "offline", data: {} });
+            if (!sb) return json(res, { source: "offline", data: {} });
 
-            const [total] = await query("SELECT COALESCE(SUM(total_amount), 0) as total FROM bookings");
-            const [fees] = await query("SELECT COALESCE(SUM(platform_fee), 0) as total FROM bookings");
-            const byStatus = await query(`
-              SELECT status, COALESCE(SUM(total_amount), 0) as total, COUNT(*)::int as count
-              FROM bookings GROUP BY status
-            `);
-            const dailyRevenue = await query(`
-              SELECT DATE(created_at)::text as date,
-                     COALESCE(SUM(total_amount), 0) as revenue,
-                     COUNT(*)::int as orders
-              FROM bookings
-              WHERE created_at >= NOW() - INTERVAL '30 days'
-              GROUP BY DATE(created_at)
-              ORDER BY DATE(created_at)
-            `);
+            const { data: allOrders } = await sb
+              .from("orders")
+              .select("totalAmount, commissionAmount, status, paymentMethod, shippingRegion, createdAt");
+
+            const orders = allOrders || [];
+            const totalRevenue = orders.reduce((s: number, o: any) => s + Number(o.totalAmount || 0), 0);
+            const totalCommission = orders.reduce((s: number, o: any) => s + Number(o.commissionAmount || 0), 0);
+
+            const byStatusMap = new Map<string, { total: number; count: number }>();
+            const byPaymentMap = new Map<string, { total: number; count: number }>();
+            const byRegionMap = new Map<string, { total: number; count: number }>();
+            const dailyMap = new Map<string, { revenue: number; commission: number; orders: number }>();
+            const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+            for (const o of orders) {
+              const status = o.status || "unknown";
+              const bs = byStatusMap.get(status) || { total: 0, count: 0 };
+              byStatusMap.set(status, { total: bs.total + Number(o.totalAmount || 0), count: bs.count + 1 });
+
+              const method = o.paymentMethod || "unknown";
+              const bm = byPaymentMap.get(method) || { total: 0, count: 0 };
+              byPaymentMap.set(method, { total: bm.total + Number(o.totalAmount || 0), count: bm.count + 1 });
+
+              const region = o.shippingRegion || "Unknown";
+              const br = byRegionMap.get(region) || { total: 0, count: 0 };
+              byRegionMap.set(region, { total: br.total + Number(o.totalAmount || 0), count: br.count + 1 });
+
+              if (o.createdAt >= thirtyDaysAgo) {
+                const date = o.createdAt.slice(0, 10);
+                const bd = dailyMap.get(date) || { revenue: 0, commission: 0, orders: 0 };
+                dailyMap.set(date, { revenue: bd.revenue + Number(o.totalAmount || 0), commission: bd.commission + Number(o.commissionAmount || 0), orders: bd.orders + 1 });
+              }
+            }
 
             return json(res, {
               source: "database",
               data: {
-                totalRevenue: Number(total?.total || 0),
-                totalPlatformFees: Number(fees?.total || 0),
-                byStatus,
-                dailyRevenue: dailyRevenue.map((d: any) => ({
-                  date: d.date,
-                  revenue: Number(d.revenue || 0),
-                  orders: d.orders,
-                })),
+                totalRevenue,
+                totalCommission,
+                byStatus: [...byStatusMap.entries()].map(([status, v]) => ({ status, total: String(v.total), count: v.count })),
+                byPaymentMethod: [...byPaymentMap.entries()].map(([method, v]) => ({ method, total: v.total, count: v.count })),
+                byRegion: [...byRegionMap.entries()].sort((a, b) => b[1].total - a[1].total).slice(0, 10).map(([region, v]) => ({ region, total: v.total, count: v.count })),
+                dailyRevenue: [...dailyMap.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([date, v]) => ({ date, revenue: v.revenue, commission: v.commission, orders: v.orders })),
               },
             });
           }
 
-          // No matching API route
+          // ─── /api/growth ───
+          if (url === "/api/growth") {
+            if (!sb) return json(res, { source: "offline", data: {} });
+
+            const [{ data: vendorsRaw }, { data: ordersRaw }, { data: productsRaw }, { data: tierRaw }] = await Promise.all([
+              sb.from("vendors").select("createdAt, tier"),
+              sb.from("orders").select("createdAt, totalAmount"),
+              sb.from("products").select("createdAt"),
+              sb.from("vendors").select("tier"),
+            ]);
+
+            const vendorByMonth = new Map<string, number>();
+            for (const v of vendorsRaw || []) vendorByMonth.set(monthKey(v.createdAt), (vendorByMonth.get(monthKey(v.createdAt)) || 0) + 1);
+
+            const orderByMonth = new Map<string, { count: number; revenue: number }>();
+            for (const o of ordersRaw || []) {
+              const m = monthKey(o.createdAt);
+              const ex = orderByMonth.get(m) || { count: 0, revenue: 0 };
+              orderByMonth.set(m, { count: ex.count + 1, revenue: ex.revenue + Number(o.totalAmount || 0) });
+            }
+
+            const productByMonth = new Map<string, number>();
+            for (const p of productsRaw || []) productByMonth.set(monthKey(p.createdAt), (productByMonth.get(monthKey(p.createdAt)) || 0) + 1);
+
+            const tierCount = new Map<string, number>();
+            for (const v of tierRaw || []) {
+              const t = v.tier || "none";
+              tierCount.set(t, (tierCount.get(t) || 0) + 1);
+            }
+
+            return json(res, {
+              source: "database",
+              data: {
+                vendorGrowth: [...vendorByMonth.entries()].sort().map(([month, count]) => ({ month, count })),
+                orderGrowth: [...orderByMonth.entries()].sort().map(([month, v]) => ({ month, count: v.count, revenue: v.revenue })),
+                productGrowth: [...productByMonth.entries()].sort().map(([month, count]) => ({ month, count })),
+                tierDistribution: [...tierCount.entries()].map(([tier, count]) => ({ tier, count })),
+              },
+            });
+          }
+
           return json(res, { error: "Not found" }, 404);
         } catch (err: any) {
-          console.error("[vite-api] Error:", err);
-          return json(res, { error: "Internal server error", detail: err.message }, 500);
+          console.error("[vite-api] Error:", err?.message || err);
+          return json(res, { error: "Internal server error" }, 500);
         }
       });
     },

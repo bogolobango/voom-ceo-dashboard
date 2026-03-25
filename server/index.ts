@@ -157,7 +157,7 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
-    console.log(`Database: ${process.env.DATABASE_URL ? "configured" : "not configured (offline mode)"}`);
+    console.log(`Database: ${process.env.VITE_SUPABASE_URL ? "Supabase configured" : "not configured (offline mode)"}`);
     console.log(`Auth: ${apiKey ? "API key required in production" : "open access (set DASHBOARD_API_KEY for production)"}`);
     console.log(`Rate limiting: 200 req/15min (general), 60 req/15min (analytics)`);
   });
