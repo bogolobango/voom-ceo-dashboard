@@ -159,20 +159,21 @@ export function MobileNav({ activeSection, onNavigate }: MobileNavProps) {
   return (
     <>
       {/* Backdrop overlay when More sheet is open */}
-      {moreOpen && (
-        <div
-          onClick={() => setMoreOpen(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 58,
-            background: 'rgba(15,23,42,0.25)',
-            backdropFilter: 'blur(4px)',
-            WebkitBackdropFilter: 'blur(4px)',
-            animation: 'fadeIn 0.18s ease',
-          }}
-        />
-      )}
+      <div
+        onClick={() => setMoreOpen(false)}
+        onTouchEnd={(e) => { e.preventDefault(); setMoreOpen(false); }}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 58,
+          background: 'rgba(15,23,42,0.25)',
+          backdropFilter: 'blur(4px)',
+          WebkitBackdropFilter: 'blur(4px)',
+          opacity: moreOpen ? 1 : 0,
+          pointerEvents: moreOpen ? 'auto' : 'none',
+          transition: 'opacity 0.2s ease',
+        }}
+      />
 
       {/* More slide-up sheet */}
       <div
@@ -183,7 +184,7 @@ export function MobileNav({ activeSection, onNavigate }: MobileNavProps) {
           position: 'fixed',
           left: 0,
           right: 0,
-          bottom: moreOpen ? 68 : -220,
+          bottom: 68,
           zIndex: 59,
           background: 'rgba(255,255,255,0.96)',
           backdropFilter: 'blur(28px) saturate(200%)',
@@ -192,7 +193,11 @@ export function MobileNav({ activeSection, onNavigate }: MobileNavProps) {
           borderRadius: '1.5rem 1.5rem 0 0',
           boxShadow: '0 -8px 40px rgba(79,70,229,0.1)',
           padding: '1rem 1.25rem 1.25rem',
-          transition: 'bottom 0.32s cubic-bezier(0.34,1.56,0.64,1)',
+          transform: moreOpen ? 'translateY(0)' : 'translateY(120%)',
+          pointerEvents: moreOpen ? 'auto' : 'none',
+          transition: 'transform 0.32s cubic-bezier(0.34,1.56,0.64,1)',
+          willChange: 'transform',
+          WebkitOverflowScrolling: 'touch',
         }}
       >
         {/* Drag handle */}
@@ -216,7 +221,15 @@ export function MobileNav({ activeSection, onNavigate }: MobileNavProps) {
           More Sections
         </p>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.5rem',
+          maxHeight: '55vh',
+          overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          paddingBottom: '0.5rem',
+        }}>
           {MORE_ITEMS.map(item => {
             const isActive = activeSection === item.id;
             return (
