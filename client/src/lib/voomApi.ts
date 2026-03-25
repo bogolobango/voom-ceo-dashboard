@@ -11,53 +11,109 @@ let _dataSource: DataSource = 'offline';
 export function getDataSource(): DataSource { return _dataSource; }
 
 // ─── Types ───
-export interface VoomStats {
-  totalProducts: number;
-  totalVendors: number;
-  totalCategories: number;
-}
 
 export interface AdminStats {
+  totalUsers: number;
   totalVendors: number;
   totalProducts: number;
   totalOrders: number;
-  totalUsers: number;
+  totalCategories: number;
+  totalPartRequests: number;
   pendingVendors: number;
   totalRevenue: string;
+  totalCommission: string;
 }
 
 export interface Vendor {
   id: number;
   businessName: string;
+  phone: string;
+  whatsapp: string | null;
   city: string | null;
   region: string | null;
   status: 'pending' | 'approved' | 'rejected' | 'suspended';
+  verified: boolean;
   rating: string | null;
-  totalSales: number | null;
+  totalSales: number;
+  totalRevenue: number;
+  totalListings: number;
+  tier: string;
+  isFeatured: boolean;
   createdAt: string;
-  phone: string;
 }
 
 export interface Order {
   id: number;
   orderNumber: string;
   totalAmount: string;
+  commissionAmount: string | null;
+  currency: string;
   status: string;
-  createdAt: string;
-  buyerName: string | null;
+  paymentMethod: string;
+  paymentStatus: string;
   shippingCity: string | null;
+  shippingRegion: string | null;
+  buyerName: string | null;
+  buyerPhone: string | null;
+  vendorName: string | null;
+  createdAt: string;
 }
 
 export interface Product {
   id: number;
   name: string;
   price: string;
-  status: string;
-  views: number | null;
-  createdAt: string;
+  currency: string;
+  brand: string | null;
+  condition: string;
   vehicleMake: string | null;
   vehicleModel: string | null;
-  condition: string;
+  quantity: number;
+  status: string;
+  views: number | null;
+  whatsappTaps: number | null;
+  categoryName: string | null;
+  vendorId: number;
+  createdAt: string;
+}
+
+export interface CategoryData {
+  id: number;
+  name: string;
+  slug: string;
+  icon: string | null;
+  parentId: number | null;
+  productCount: number;
+}
+
+export interface PartRequest {
+  id: number;
+  guestName: string | null;
+  contactPhone: string;
+  make: string | null;
+  model: string | null;
+  year: number | null;
+  partName: string;
+  description: string | null;
+  budget: string | null;
+  status: string;
+  createdAt: string;
+}
+
+export interface RevenueData {
+  totalRevenue: number;
+  totalCommission: number;
+  byStatus: { status: string; total: string; count: number }[];
+  byPaymentMethod: { method: string; total: number; count: number }[];
+  byRegion: { region: string; total: number; count: number }[];
+  dailyRevenue: { date: string; revenue: number; commission: number; orders: number }[];
+}
+
+export interface GrowthData {
+  vendorGrowth: { month: string; count: number }[];
+  orderGrowth: { month: string; count: number; revenue: number }[];
+  productGrowth: { month: string; count: number }[];
+  tierDistribution: { tier: string; count: number }[];
 }
 
 // ─── API fetch helper ───
@@ -71,19 +127,15 @@ async function apiGet<T>(path: string): Promise<T | null> {
   }
 }
 
-// ─── Public Stats ───
-export async function fetchPublicStats(): Promise<VoomStats> {
+// ─── Stats ───
+export async function fetchStats(): Promise<AdminStats | null> {
   const data = await apiGet<AdminStats & { source: string }>('/api/stats');
   if (data && data.source === 'database') {
     _dataSource = 'database';
-    return {
-      totalProducts: data.totalProducts,
-      totalVendors: data.totalVendors,
-      totalCategories: 0,
-    };
+    return data;
   }
   _dataSource = 'offline';
-  return { totalProducts: 0, totalVendors: 0, totalCategories: 0 };
+  return null;
 }
 
 // ─── Vendor List ───
@@ -94,11 +146,6 @@ export async function fetchVendors(): Promise<Vendor[]> {
     return result.data;
   }
   return [];
-}
-
-// ─── All Vendors (admin) ───
-export async function fetchAllVendors(): Promise<Vendor[]> {
-  return fetchVendors();
 }
 
 // ─── Orders ───
@@ -121,6 +168,34 @@ export async function fetchProducts(): Promise<Product[]> {
   return [];
 }
 
+// ─── Categories ───
+export async function fetchCategories(): Promise<CategoryData[]> {
+  const result = await apiGet<{ source: string; data: CategoryData[] }>('/api/categories');
+  if (result?.source === 'database') return result.data;
+  return [];
+}
+
+// ─── Part Requests ───
+export async function fetchPartRequests(): Promise<PartRequest[]> {
+  const result = await apiGet<{ source: string; data: PartRequest[] }>('/api/part-requests');
+  if (result?.source === 'database') return result.data;
+  return [];
+}
+
+// ─── Revenue Data ───
+export async function fetchRevenue(): Promise<RevenueData | null> {
+  const result = await apiGet<{ source: string; data: RevenueData }>('/api/revenue');
+  if (result?.source === 'database') return result.data;
+  return null;
+}
+
+// ─── Growth Data ───
+export async function fetchGrowth(): Promise<GrowthData | null> {
+  const result = await apiGet<{ source: string; data: GrowthData }>('/api/growth');
+  if (result?.source === 'database') return result.data;
+  return null;
+}
+
 // ─── Derived KPI Calculations ───
 export interface DashboardKPIs {
   totalVendors: number;
@@ -130,48 +205,57 @@ export interface DashboardKPIs {
   totalProducts: number;
   totalCategories: number;
   totalGMV: number;
+  totalCommission: number;
   avgOrderValue: number;
   totalOrders: number;
   completedOrders: number;
   orderCompletionRate: number;
-  totalLeads: number;
-  leadsContacted: number;
-  leadConversionRate: number;
+  totalPartRequests: number;
+  openPartRequests: number;
+  fulfilledPartRequests: number;
+  totalUsers: number;
   vendorGrowth: number;
   orderGrowth: number;
   gmvGrowth: number;
 }
 
 export function computeKPIs(
-  publicStats: VoomStats,
+  stats: AdminStats | null,
   vendors: Vendor[],
   orders: Order[],
-  leadsCount: number = 0
+  partRequests: PartRequest[],
 ): DashboardKPIs {
   const approved = vendors.filter(v => v.status === 'approved').length;
   const pending = vendors.filter(v => v.status === 'pending').length;
-  const totalVendors = vendors.length || publicStats.totalVendors;
+  const totalVendors = vendors.length || (stats?.totalVendors ?? 0);
 
   const totalGMV = orders.reduce((sum, o) => sum + parseFloat(o.totalAmount || '0'), 0);
-  const completedOrders = orders.filter(o => o.status === 'delivered' || o.status === 'completed').length;
+  const totalCommission = orders.reduce(
+    (sum, o) => sum + parseFloat(o.commissionAmount || '0'), 0
+  );
+  const completedOrders = orders.filter(o => o.status === 'delivered').length;
   const avgOrderValue = orders.length > 0 ? totalGMV / orders.length : 0;
+
+  const openPR = partRequests.filter(r => r.status === 'open').length;
+  const fulfilledPR = partRequests.filter(r => r.status === 'fulfilled').length;
 
   return {
     totalVendors,
     approvedVendors: approved,
     pendingVendors: pending,
     vendorApprovalRate: totalVendors > 0 ? (approved / totalVendors) * 100 : 0,
-    totalProducts: publicStats.totalProducts,
-    totalCategories: publicStats.totalCategories,
+    totalProducts: stats?.totalProducts ?? 0,
+    totalCategories: stats?.totalCategories ?? 0,
     totalGMV,
+    totalCommission,
     avgOrderValue,
     totalOrders: orders.length,
     completedOrders,
     orderCompletionRate: orders.length > 0 ? (completedOrders / orders.length) * 100 : 0,
-    totalLeads: leadsCount,
-    leadsContacted: 0,
-    leadConversionRate: 0,
-    // Growth: compute from real data or show 0
+    totalPartRequests: partRequests.length,
+    openPartRequests: openPR,
+    fulfilledPartRequests: fulfilledPR,
+    totalUsers: stats?.totalUsers ?? 0,
     vendorGrowth: 0,
     orderGrowth: 0,
     gmvGrowth: 0,
@@ -197,7 +281,6 @@ export function generateRevenueChartData(orders: Order[]) {
   return Array.from(byDay.entries()).map(([date, revenue]) => ({
     date: new Date(date).toLocaleDateString('en-GB', { month: 'short', day: 'numeric' }),
     revenue: Math.round(revenue),
-    orders: Math.floor(revenue / 180),
   }));
 }
 
@@ -226,4 +309,43 @@ export function getOrderStatusDist(orders: Order[]) {
     dist[o.status] = (dist[o.status] || 0) + 1;
   });
   return dist;
+}
+
+// ─── Product Make Distribution ───
+export function getProductMakeDist(products: Product[]) {
+  const dist: Record<string, number> = {};
+  products.forEach(p => {
+    const make = p.vehicleMake || 'Other';
+    dist[make] = (dist[make] || 0) + 1;
+  });
+  return Object.entries(dist)
+    .map(([make, count]) => ({ make, products: count }))
+    .sort((a, b) => b.products - a.products)
+    .slice(0, 10);
+}
+
+// ─── Product Category Distribution ───
+export function getProductCategoryDist(products: Product[]) {
+  const dist: Record<string, number> = {};
+  products.forEach(p => {
+    const cat = p.categoryName || 'Uncategorized';
+    dist[cat] = (dist[cat] || 0) + 1;
+  });
+  return Object.entries(dist)
+    .map(([category, count]) => ({ category, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
+// ─── Product Condition Distribution ───
+export function getProductConditionDist(products: Product[]) {
+  const dist: Record<string, number> = { new: 0, used: 0, refurbished: 0 };
+  products.forEach(p => {
+    if (dist[p.condition] !== undefined) dist[p.condition]++;
+  });
+  const total = products.length || 1;
+  return {
+    new: { count: dist.new, pct: Math.round((dist.new / total) * 100) },
+    used: { count: dist.used, pct: Math.round((dist.used / total) * 100) },
+    refurbished: { count: dist.refurbished, pct: Math.round((dist.refurbished / total) * 100) },
+  };
 }

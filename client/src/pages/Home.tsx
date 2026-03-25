@@ -13,15 +13,18 @@ import { Vendors } from '../components/sections/Vendors';
 import { Products } from '../components/sections/Products';
 import { Orders } from '../components/sections/Orders';
 import { Revenue } from '../components/sections/Revenue';
-import { Leads } from '../components/sections/Leads';
+import { PartRequests } from '../components/sections/PartRequests';
 import { Growth } from '../components/sections/Growth';
 import {
-  fetchPublicStats, fetchVendors, fetchOrders, computeKPIs, getDataSource,
-  type VoomStats, type Vendor, type Order, type DashboardKPIs, type DataSource,
+  fetchStats, fetchVendors, fetchOrders, fetchProducts,
+  fetchPartRequests, fetchRevenue, fetchGrowth,
+  computeKPIs, getDataSource,
+  type Vendor, type Order, type Product, type PartRequest,
+  type DashboardKPIs, type DataSource, type RevenueData, type GrowthData,
 } from '../lib/voomApi';
 import { toast } from 'sonner';
 
-type Section = 'overview' | 'vendors' | 'products' | 'orders' | 'revenue' | 'leads' | 'growth' | 'settings';
+type Section = 'overview' | 'vendors' | 'products' | 'orders' | 'revenue' | 'part-requests' | 'growth' | 'settings';
 
 const SECTION_LABELS: Record<Section, string> = {
   overview: 'Overview',
@@ -29,7 +32,7 @@ const SECTION_LABELS: Record<Section, string> = {
   products: 'Products',
   orders: 'Orders',
   revenue: 'Revenue',
-  leads: 'Lead Pipeline',
+  'part-requests': 'Part Requests',
   growth: 'Growth',
   settings: 'Settings',
 };
@@ -52,24 +55,34 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const isMobile = useIsMobile();
 
-  const [publicStats, setPublicStats] = useState<VoomStats>({ totalProducts: 0, totalVendors: 0, totalCategories: 0 });
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [partRequests, setPartRequests] = useState<PartRequest[]>([]);
+  const [revenueData, setRevenueData] = useState<RevenueData | null>(null);
+  const [growthData, setGrowthData] = useState<GrowthData | null>(null);
   const [kpis, setKpis] = useState<DashboardKPIs | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [stats, vendorList, orderList] = await Promise.all([
-        fetchPublicStats(),
+      const [stats, vendorList, orderList, productList, prList, revData, grData] = await Promise.all([
+        fetchStats(),
         fetchVendors(),
         fetchOrders(),
+        fetchProducts(),
+        fetchPartRequests(),
+        fetchRevenue(),
+        fetchGrowth(),
       ]);
-      setPublicStats(stats);
       setVendors(vendorList);
       setOrders(orderList);
-      setKpis(computeKPIs(stats, vendorList, orderList, 0));
+      setProducts(productList);
+      setPartRequests(prList);
+      setRevenueData(revData);
+      setGrowthData(grData);
+      setKpis(computeKPIs(stats, vendorList, orderList, prList));
       setLastUpdated(new Date());
       const source = getDataSource();
       setDataSource(source);
@@ -103,14 +116,14 @@ export default function Home() {
   const renderSection = () => {
     if (!kpis) return null;
     switch (activeSection) {
-      case 'overview': return <Overview kpis={kpis} orders={orders} vendors={vendors} loading={loading} />;
+      case 'overview': return <Overview kpis={kpis} orders={orders} vendors={vendors} products={products} partRequests={partRequests} loading={loading} />;
       case 'vendors': return <Vendors vendors={vendors} />;
-      case 'products': return <Products kpis={kpis} />;
+      case 'products': return <Products kpis={kpis} products={products} />;
       case 'orders': return <Orders orders={orders} kpis={kpis} />;
-      case 'revenue': return <Revenue orders={orders} kpis={kpis} />;
-      case 'leads': return <Leads kpis={kpis} />;
-      case 'growth': return <Growth kpis={kpis} />;
-      default: return <Overview kpis={kpis} orders={orders} vendors={vendors} loading={loading} />;
+      case 'revenue': return <Revenue orders={orders} kpis={kpis} revenueData={revenueData} />;
+      case 'part-requests': return <PartRequests partRequests={partRequests} kpis={kpis} />;
+      case 'growth': return <Growth kpis={kpis} growthData={growthData} vendors={vendors} />;
+      default: return <Overview kpis={kpis} orders={orders} vendors={vendors} products={products} partRequests={partRequests} loading={loading} />;
     }
   };
 
