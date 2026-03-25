@@ -14,6 +14,15 @@ interface MobileNavProps {
 
 const PRIMARY_TABS = [
   {
+    id: 'briefing',
+    label: 'Briefing',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+      </svg>
+    ),
+  },
+  {
     id: 'overview',
     label: 'Overview',
     icon: (
@@ -99,12 +108,48 @@ const MORE_ITEMS = [
       </svg>
     ),
   },
+  {
+    id: 'crm',
+    label: 'Outreach CRM',
+    description: 'Vendor outreach pipeline',
+    color: '#7C3AED',
+    bg: 'rgba(124,58,237,0.08)',
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72"/>
+      </svg>
+    ),
+  },
+  {
+    id: 'security',
+    label: 'Security',
+    description: 'CISO view & compliance',
+    color: '#EF4444',
+    bg: 'rgba(239,68,68,0.08)',
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      </svg>
+    ),
+  },
+  {
+    id: 'competitive',
+    label: 'Competitive',
+    description: 'Market intelligence',
+    color: '#0EA5E9',
+    bg: 'rgba(14,165,233,0.08)',
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+      </svg>
+    ),
+  },
 ];
 
 export function MobileNav({ activeSection, onNavigate }: MobileNavProps) {
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const isMoreActive = ['vendors', 'revenue', 'products'].includes(activeSection);
+  const isMoreActive = ['vendors', 'revenue', 'products', 'crm', 'security', 'competitive'].includes(activeSection);
 
   const handleMoreItemClick = (id: string) => {
     onNavigate(id);
