@@ -29,6 +29,18 @@ function monthKey(d: string) {
   return d.slice(0, 7);
 }
 
+function parseBody(req: any): Promise<any> {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    req.on("data", (chunk: any) => { body += chunk; });
+    req.on("end", () => {
+      try { resolve(body ? JSON.parse(body) : {}); }
+      catch { reject(new Error("Invalid JSON body")); }
+    });
+    req.on("error", reject);
+  });
+}
+
 export default function viteApiPlugin(): Plugin {
   return {
     name: "voom-api",
@@ -337,6 +349,148 @@ export default function viteApiPlugin(): Plugin {
                 tierDistribution: [...tierCount.entries()].map(([tier, count]) => ({ tier, count })),
               },
             });
+          }
+
+          // ─── /api/vendors/:id (detail) ───
+          const vendorDetailMatch = url.match(/^\/api\/vendors\/(\d+)$/);
+          if (vendorDetailMatch) {
+            if (!sb) return json(res, { source: "offline" });
+            const vendorId = parseInt(vendorDetailMatch[1], 10);
+
+            const { data: vendor, error: vendorError } = await sb
+              .from("vendors").select("*").eq("id", vendorId).single();
+            if (vendorError || !vendor) return json(res, { error: "Vendor not found" }, 404);
+
+            const { count: productCount } = await sb
+              .from("products").select("*", { count: "exact", head: true }).eq("vendorId", vendorId);
+            const { data: orders } = await sb
+              .from("orders").select("id, totalAmount").eq("vendorId", vendorId);
+
+            const totalOrders = orders?.length ?? 0;
+            const totalRevenue = (orders || []).reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0);
+
+            return json(res, {
+              source: "database",
+              data: {
+                ...vendor,
+                totalListings: productCount ?? 0,
+                totalOrders,
+                totalRevenue,
+              },
+            });
+          }
+
+          // ─── /api/vendors/:id/orders ───
+          const vendorOrdersMatch = url.match(/^\/api\/vendors\/(\d+)\/orders$/);
+          if (vendorOrdersMatch) {
+            if (!sb) return json(res, { source: "offline", data: [] });
+            const vendorId = parseInt(vendorOrdersMatch[1], 10);
+            const { data, error } = await sb.from("orders")
+              .select("id, orderNumber, totalAmount, commissionAmount, currency, status, paymentMethod, paymentStatus, buyerName, buyerPhone, createdAt")
+              .eq("vendorId", vendorId).order("createdAt", { ascending: false });
+            if (error) throw error;
+            return json(res, { source: "database", data: data ?? [] });
+          }
+
+          // ─── /api/vendors/:id/payouts ───
+          const vendorPayoutsMatch = url.match(/^\/api\/vendors\/(\d+)\/payouts$/);
+          if (vendorPayoutsMatch) {
+            if (!sb) return json(res, { source: "offline", data: [] });
+            const vendorId = parseInt(vendorPayoutsMatch[1], 10);
+            const { data, error } = await sb.from("vendor_payouts")
+              .select("*").eq("vendorId", vendorId).order("createdAt", { ascending: false });
+            if (error) throw error;
+            return json(res, { source: "database", data: data ?? [] });
+          }
+
+          // ─── /api/vendors/:id/notifications ───
+          const vendorNotifsMatch = url.match(/^\/api\/vendors\/(\d+)\/notifications$/);
+          if (vendorNotifsMatch) {
+            if (!sb) return json(res, { source: "offline", data: [] });
+            const vendorId = parseInt(vendorNotifsMatch[1], 10);
+            const { data: vendor } = await sb.from("vendors").select("userId").eq("id", vendorId).single();
+            if (!vendor) return json(res, { error: "Vendor not found" }, 404);
+            const { data, error } = await sb.from("notifications")
+              .select("*").eq("userId", vendor.userId).order("createdAt", { ascending: false });
+            if (error) throw error;
+            return json(res, { source: "database", data: data ?? [] });
+          }
+
+          // ─── /api/vendors/:id/subscription-events ───
+          const vendorSubEventsMatch = url.match(/^\/api\/vendors\/(\d+)\/subscription-events$/);
+          if (vendorSubEventsMatch) {
+            if (!sb) return json(res, { source: "offline", data: [] });
+            const vendorId = parseInt(vendorSubEventsMatch[1], 10);
+            const { data, error } = await sb.from("subscription_events")
+              .select("*").eq("vendorId", vendorId).order("createdAt", { ascending: false });
+            if (error) throw error;
+            return json(res, { source: "database", data: data ?? [] });
+          }
+
+          // ─── /api/vendors/:id/status (PATCH) ───
+          const vendorStatusMatch = url.match(/^\/api\/vendors\/(\d+)\/status$/);
+          if (vendorStatusMatch && req.method === "PATCH") {
+            if (!sb) return json(res, { error: "Database not available" }, 503);
+            const vendorId = parseInt(vendorStatusMatch[1], 10);
+            const body = await parseBody(req);
+            const { status } = body;
+            const validStatuses = ["approved", "pending", "rejected", "suspended"];
+            if (!validStatuses.includes(status)) return json(res, { error: "Invalid status" }, 400);
+            const { data, error } = await sb.from("vendors")
+              .update({ status, updatedAt: new Date().toISOString() })
+              .eq("id", vendorId).select().single();
+            if (error) throw error;
+            return json(res, data);
+          }
+
+          // ─── /api/vendors/:id/tier (PATCH) ───
+          const vendorTierMatch = url.match(/^\/api\/vendors\/(\d+)\/tier$/);
+          if (vendorTierMatch && req.method === "PATCH") {
+            if (!sb) return json(res, { error: "Database not available" }, 503);
+            const vendorId = parseInt(vendorTierMatch[1], 10);
+            const body = await parseBody(req);
+            const { tier, tierExpiresAt } = body;
+            const validTiers = ["free", "starter", "pro", "business", "enterprise"];
+            if (!validTiers.includes(tier)) return json(res, { error: "Invalid tier" }, 400);
+            const updateFields: Record<string, any> = { tier, updatedAt: new Date().toISOString() };
+            if (tierExpiresAt !== undefined) updateFields.tierExpiresAt = tierExpiresAt;
+            const { data, error } = await sb.from("vendors")
+              .update(updateFields).eq("id", vendorId).select().single();
+            if (error) throw error;
+            return json(res, data);
+          }
+
+          // ─── /api/vendors/:id/featured (PATCH) ───
+          const vendorFeaturedMatch = url.match(/^\/api\/vendors\/(\d+)\/featured$/);
+          if (vendorFeaturedMatch && req.method === "PATCH") {
+            if (!sb) return json(res, { error: "Database not available" }, 503);
+            const vendorId = parseInt(vendorFeaturedMatch[1], 10);
+            const body = await parseBody(req);
+            const { isFeatured, featuredUntil, featuredCategoryId } = body;
+            const updateFields: Record<string, any> = { isFeatured, updatedAt: new Date().toISOString() };
+            if (featuredUntil !== undefined) updateFields.featuredUntil = featuredUntil;
+            if (featuredCategoryId !== undefined) updateFields.featuredCategoryId = featuredCategoryId;
+            const { data, error } = await sb.from("vendors")
+              .update(updateFields).eq("id", vendorId).select().single();
+            if (error) throw error;
+            return json(res, data);
+          }
+
+          // ─── /api/vendors/:id/notifications (POST) ───
+          const vendorNotifPostMatch = url.match(/^\/api\/vendors\/(\d+)\/notifications$/);
+          if (vendorNotifPostMatch && req.method === "POST") {
+            if (!sb) return json(res, { error: "Database not available" }, 503);
+            const vendorId = parseInt(vendorNotifPostMatch[1], 10);
+            const { data: vendor } = await sb.from("vendors").select("userId").eq("id", vendorId).single();
+            if (!vendor) return json(res, { error: "Vendor not found" }, 404);
+            const body = await parseBody(req);
+            const { title, message, type } = body;
+            if (!title || !message) return json(res, { error: "title and message are required" }, 400);
+            const insertFields: Record<string, any> = { userId: vendor.userId, title, message };
+            if (type) insertFields.type = type;
+            const { data, error } = await sb.from("notifications").insert(insertFields).select().single();
+            if (error) throw error;
+            return json(res, data, 201);
           }
 
           return json(res, { error: "Not found" }, 404);
