@@ -739,4 +739,319 @@ router.get("/api/vendor-health", async (_req, res) => {
   }
 });
 
+// ─── Vendor Detail Endpoints ─────────────────────────────────────────────────
+
+router.get("/api/vendors/:id", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const vendorId = parseInt(req.params.id, 10);
+    if (isNaN(vendorId)) {
+      return res.status(400).json({ error: "Invalid vendor ID" });
+    }
+
+    const { data: vendor, error: vendorError } = await supabase
+      .from("vendors")
+      .select("*")
+      .eq("id", vendorId)
+      .single();
+
+    if (vendorError || !vendor) {
+      return res.status(404).json({ error: "Vendor not found" });
+    }
+
+    const { count: productCount } = await supabase
+      .from("products")
+      .select("*", { count: "exact", head: true })
+      .eq("vendorId", vendorId);
+
+    const { data: orders } = await supabase
+      .from("orders")
+      .select("id, totalAmount, commissionAmount")
+      .eq("vendorId", vendorId);
+
+    const orderCount = orders?.length ?? 0;
+    const totalRevenue = orders?.reduce((sum, o) => sum + (o.totalAmount || 0), 0) ?? 0;
+
+    res.json({
+      ...vendor,
+      productCount: productCount ?? 0,
+      orderCount,
+      totalRevenue,
+    });
+  } catch (error) {
+    safeLogError("Vendor detail query error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+router.get("/api/vendors/:id/orders", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const vendorId = parseInt(req.params.id, 10);
+    if (isNaN(vendorId)) {
+      return res.status(400).json({ error: "Invalid vendor ID" });
+    }
+
+    const { data, error } = await supabase
+      .from("orders")
+      .select("id, orderNumber, totalAmount, commissionAmount, currency, status, paymentMethod, paymentStatus, buyerName, buyerPhone, createdAt")
+      .eq("vendorId", vendorId)
+      .order("createdAt", { ascending: false });
+
+    if (error) throw error;
+    res.json(data ?? []);
+  } catch (error) {
+    safeLogError("Vendor orders query error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+router.get("/api/vendors/:id/payouts", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const vendorId = parseInt(req.params.id, 10);
+    if (isNaN(vendorId)) {
+      return res.status(400).json({ error: "Invalid vendor ID" });
+    }
+
+    const { data, error } = await supabase
+      .from("vendor_payouts")
+      .select("*")
+      .eq("vendorId", vendorId)
+      .order("createdAt", { ascending: false });
+
+    if (error) throw error;
+    res.json(data ?? []);
+  } catch (error) {
+    safeLogError("Vendor payouts query error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+router.get("/api/vendors/:id/notifications", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const vendorId = parseInt(req.params.id, 10);
+    if (isNaN(vendorId)) {
+      return res.status(400).json({ error: "Invalid vendor ID" });
+    }
+
+    const { data: vendor, error: vendorError } = await supabase
+      .from("vendors")
+      .select("userId")
+      .eq("id", vendorId)
+      .single();
+
+    if (vendorError || !vendor) {
+      return res.status(404).json({ error: "Vendor not found" });
+    }
+
+    const { data, error } = await supabase
+      .from("notifications")
+      .select("*")
+      .eq("userId", vendor.userId)
+      .order("createdAt", { ascending: false });
+
+    if (error) throw error;
+    res.json(data ?? []);
+  } catch (error) {
+    safeLogError("Vendor notifications query error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+router.get("/api/vendors/:id/subscription-events", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const vendorId = parseInt(req.params.id, 10);
+    if (isNaN(vendorId)) {
+      return res.status(400).json({ error: "Invalid vendor ID" });
+    }
+
+    const { data, error } = await supabase
+      .from("subscription_events")
+      .select("*")
+      .eq("vendorId", vendorId)
+      .order("createdAt", { ascending: false });
+
+    if (error) throw error;
+    res.json(data ?? []);
+  } catch (error) {
+    safeLogError("Vendor subscription events query error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+router.patch("/api/vendors/:id/status", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const vendorId = parseInt(req.params.id, 10);
+    if (isNaN(vendorId)) {
+      return res.status(400).json({ error: "Invalid vendor ID" });
+    }
+
+    const { status } = req.body;
+    const validStatuses = ["approved", "pending", "rejected", "suspended"];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: "Invalid status. Must be one of: " + validStatuses.join(", ") });
+    }
+
+    const { data, error } = await supabase
+      .from("vendors")
+      .update({ status, updatedAt: new Date().toISOString() })
+      .eq("id", vendorId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    if (!data) {
+      return res.status(404).json({ error: "Vendor not found" });
+    }
+
+    cache.del(CACHE_KEYS.stats);
+    cache.del(CACHE_KEYS.vendorHealth);
+
+    res.json(data);
+  } catch (error) {
+    safeLogError("Vendor status update error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+router.patch("/api/vendors/:id/tier", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const vendorId = parseInt(req.params.id, 10);
+    if (isNaN(vendorId)) {
+      return res.status(400).json({ error: "Invalid vendor ID" });
+    }
+
+    const { tier, tierExpiresAt } = req.body;
+    const validTiers = ["free", "starter", "pro", "business", "enterprise"];
+    if (!validTiers.includes(tier)) {
+      return res.status(400).json({ error: "Invalid tier. Must be one of: " + validTiers.join(", ") });
+    }
+
+    const updateFields: Record<string, any> = {
+      tier,
+      updatedAt: new Date().toISOString(),
+    };
+    if (tierExpiresAt !== undefined) {
+      updateFields.tierExpiresAt = tierExpiresAt;
+    }
+
+    const { data, error } = await supabase
+      .from("vendors")
+      .update(updateFields)
+      .eq("id", vendorId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    if (!data) {
+      return res.status(404).json({ error: "Vendor not found" });
+    }
+
+    cache.del(CACHE_KEYS.stats);
+    cache.del(CACHE_KEYS.vendorHealth);
+
+    res.json(data);
+  } catch (error) {
+    safeLogError("Vendor tier update error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+router.patch("/api/vendors/:id/featured", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const vendorId = parseInt(req.params.id, 10);
+    if (isNaN(vendorId)) {
+      return res.status(400).json({ error: "Invalid vendor ID" });
+    }
+
+    const { isFeatured, featuredUntil, featuredCategoryId } = req.body;
+    if (typeof isFeatured !== "boolean") {
+      return res.status(400).json({ error: "isFeatured must be a boolean" });
+    }
+
+    const updateFields: Record<string, any> = {
+      isFeatured,
+      updatedAt: new Date().toISOString(),
+    };
+    if (featuredUntil !== undefined) {
+      updateFields.featuredUntil = featuredUntil;
+    }
+    if (featuredCategoryId !== undefined) {
+      updateFields.featuredCategoryId = featuredCategoryId;
+    }
+
+    const { data, error } = await supabase
+      .from("vendors")
+      .update(updateFields)
+      .eq("id", vendorId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    if (!data) {
+      return res.status(404).json({ error: "Vendor not found" });
+    }
+
+    cache.del(CACHE_KEYS.stats);
+    cache.del(CACHE_KEYS.vendorHealth);
+
+    res.json(data);
+  } catch (error) {
+    safeLogError("Vendor featured update error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+router.post("/api/vendors/:id/notifications", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const vendorId = parseInt(req.params.id, 10);
+    if (isNaN(vendorId)) {
+      return res.status(400).json({ error: "Invalid vendor ID" });
+    }
+
+    const { data: vendor, error: vendorError } = await supabase
+      .from("vendors")
+      .select("userId")
+      .eq("id", vendorId)
+      .single();
+
+    if (vendorError || !vendor) {
+      return res.status(404).json({ error: "Vendor not found" });
+    }
+
+    const { title, message, type } = req.body;
+    if (!title || !message) {
+      return res.status(400).json({ error: "title and message are required" });
+    }
+
+    const insertFields: Record<string, any> = {
+      userId: vendor.userId,
+      title,
+      message,
+    };
+    if (type !== undefined) {
+      insertFields.type = type;
+    }
+
+    const { data, error } = await supabase
+      .from("notifications")
+      .insert(insertFields)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(data);
+  } catch (error) {
+    safeLogError("Vendor notification create error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
 export default router;
