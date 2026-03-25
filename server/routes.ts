@@ -12,6 +12,8 @@ const CACHE_KEYS = {
   revenue: "api:revenue",
   growth: "api:growth",
   categories: "api:categories",
+  briefing: "api:briefing",
+  vendorHealth: "api:vendor-health",
 };
 
 const MAX_PAGE_SIZE = 200;
@@ -484,6 +486,251 @@ router.get("/api/health", async (_req, res) => {
     res.json({ status: "ok", database: "connected", userCount: count });
   } catch (error: any) {
     res.json({ status: "ok", database: "error", error: error.message });
+  }
+});
+
+// ─── Morning Briefing ───────────────────────────────────────
+
+const TIER_PRICES: Record<string, number> = {
+  starter: 100,
+  pro: 200,
+  business: 800,
+  enterprise: 2000,
+};
+
+router.get("/api/briefing", async (_req, res) => {
+  if (dbUnavailable(res)) return;
+  const cached = cache.get(CACHE_KEYS.briefing);
+  if (cached) return res.json(cached);
+
+  try {
+    const now = new Date();
+    const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+    const yesterdayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - 86400000).toISOString();
+    const twentyFourHoursAgo = new Date(now.getTime() - 86400000).toISOString();
+    const sevenDaysFromNow = new Date(now.getTime() + 7 * 86400000).toISOString();
+    const nowISO = now.toISOString();
+
+    // Today counts
+    const [
+      { count: todaySearches },
+      { count: todayWhatsappTaps },
+      { count: todayProductViews },
+      { count: todayNewVendors },
+      { count: todayPartRequests },
+    ] = await Promise.all([
+      supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "search").gte("createdAt", todayStart),
+      supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "whatsapp_tap").gte("createdAt", todayStart),
+      supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "product_view").gte("createdAt", todayStart),
+      supabase!.from("vendors").select("*", { count: "exact", head: true }).gte("createdAt", todayStart),
+      supabase!.from("part_requests").select("*", { count: "exact", head: true }).gte("createdAt", todayStart),
+    ]);
+
+    // Yesterday counts
+    const [
+      { count: yesterdaySearches },
+      { count: yesterdayWhatsappTaps },
+      { count: yesterdayProductViews },
+      { count: yesterdayNewVendors },
+      { count: yesterdayPartRequests },
+    ] = await Promise.all([
+      supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "search").gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
+      supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "whatsapp_tap").gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
+      supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "product_view").gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
+      supabase!.from("vendors").select("*", { count: "exact", head: true }).gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
+      supabase!.from("part_requests").select("*", { count: "exact", head: true }).gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
+    ]);
+
+    // Top searches & zero-result searches from last 24h
+    const { data: recentSearchEvents } = await supabase!
+      .from("analytics_events")
+      .select("metadata")
+      .eq("eventType", "search")
+      .gte("createdAt", twentyFourHoursAgo);
+
+    const queryCountMap = new Map<string, number>();
+    const zeroResultQueries: string[] = [];
+    for (const evt of recentSearchEvents || []) {
+      const meta = evt.metadata as Record<string, any> | null;
+      if (!meta) continue;
+      const query = meta.query as string | undefined;
+      if (query) {
+        queryCountMap.set(query, (queryCountMap.get(query) || 0) + 1);
+      }
+      if (meta.resultCount === 0 || meta.results === 0) {
+        if (query && !zeroResultQueries.includes(query)) {
+          zeroResultQueries.push(query);
+        }
+      }
+    }
+    const topSearches = [...queryCountMap.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([query, count]) => ({ query, count }));
+
+    // Expiring vendors (paid, expiring within 7 days)
+    const { data: expiringVendorsRaw } = await supabase!
+      .from("vendors")
+      .select("id, businessName, tier, tierExpiresAt")
+      .neq("tier", "free")
+      .gte("tierExpiresAt", nowISO)
+      .lte("tierExpiresAt", sevenDaysFromNow);
+
+    const expiringVendors = (expiringVendorsRaw || []).map((v: any) => ({
+      id: v.id,
+      businessName: v.businessName,
+      tier: v.tier,
+      tierExpiresAt: v.tierExpiresAt,
+    }));
+
+    // Active paid vendors & MRR
+    const { data: paidVendorsRaw } = await supabase!
+      .from("vendors")
+      .select("tier, tierExpiresAt")
+      .neq("tier", "free");
+
+    let activePaidVendors = 0;
+    let mrr = 0;
+    for (const v of paidVendorsRaw || []) {
+      if (!v.tierExpiresAt || v.tierExpiresAt > nowISO) {
+        activePaidVendors++;
+        mrr += TIER_PRICES[v.tier] || 0;
+      }
+    }
+
+    const result = {
+      source: "database",
+      todaySearches: todaySearches ?? 0,
+      todayWhatsappTaps: todayWhatsappTaps ?? 0,
+      todayProductViews: todayProductViews ?? 0,
+      todayNewVendors: todayNewVendors ?? 0,
+      todayPartRequests: todayPartRequests ?? 0,
+      yesterdaySearches: yesterdaySearches ?? 0,
+      yesterdayWhatsappTaps: yesterdayWhatsappTaps ?? 0,
+      yesterdayProductViews: yesterdayProductViews ?? 0,
+      yesterdayNewVendors: yesterdayNewVendors ?? 0,
+      yesterdayPartRequests: yesterdayPartRequests ?? 0,
+      topSearches,
+      zeroResultSearches: zeroResultQueries,
+      expiringVendors,
+      activePaidVendors,
+      mrr,
+    };
+    cache.set(CACHE_KEYS.briefing, result, 300);
+    res.json(result);
+  } catch (error) {
+    safeLogError("Briefing query error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+// ─── Analytics Events ───────────────────────────────────────
+
+router.get("/api/analytics-events", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  const { limit, offset } = parsePagination(req.query);
+
+  try {
+    const { data: events, error } = await supabase!
+      .from("analytics_events")
+      .select("id, eventType, metadata, createdAt")
+      .order("createdAt", { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (error) throw error;
+
+    res.json({ source: "database", data: events || [], pagination: { limit, offset } });
+  } catch (error) {
+    safeLogError("Analytics events query error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+// ─── Vendor Health ──────────────────────────────────────────
+
+router.get("/api/vendor-health", async (_req, res) => {
+  if (dbUnavailable(res)) return;
+  const cached = cache.get(CACHE_KEYS.vendorHealth);
+  if (cached) return res.json(cached);
+
+  try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    // Get approved vendors
+    const { data: vendors, error: vendorError } = await supabase!
+      .from("vendors")
+      .select("id, businessName, tier, city, createdAt")
+      .eq("status", "approved");
+
+    if (vendorError) throw vendorError;
+
+    const vendorList = vendors || [];
+    if (vendorList.length === 0) {
+      const result = { source: "database", data: [] };
+      cache.set(CACHE_KEYS.vendorHealth, result, 600);
+      return res.json(result);
+    }
+
+    const vendorIds = vendorList.map((v: any) => v.id);
+
+    // Fetch products, whatsapp taps, and product views in parallel
+    const [{ data: productsRaw }, { data: whatsappEventsRaw }, { data: viewEventsRaw }] = await Promise.all([
+      supabase!.from("products").select("vendorId").in("vendorId", vendorIds),
+      supabase!.from("analytics_events").select("vendorId").eq("eventType", "whatsapp_tap").gte("createdAt", thirtyDaysAgo).in("vendorId", vendorIds),
+      supabase!.from("analytics_events").select("vendorId").eq("eventType", "product_view").gte("createdAt", thirtyDaysAgo).in("vendorId", vendorIds),
+    ]);
+
+    // Count products per vendor
+    const productCountMap = new Map<number, number>();
+    for (const p of productsRaw || []) {
+      productCountMap.set(p.vendorId, (productCountMap.get(p.vendorId) || 0) + 1);
+    }
+
+    // Count whatsapp taps per vendor
+    const whatsappCountMap = new Map<number, number>();
+    for (const e of whatsappEventsRaw || []) {
+      if (e.vendorId) whatsappCountMap.set(e.vendorId, (whatsappCountMap.get(e.vendorId) || 0) + 1);
+    }
+
+    // Count product views per vendor
+    const viewCountMap = new Map<number, number>();
+    for (const e of viewEventsRaw || []) {
+      if (e.vendorId) viewCountMap.set(e.vendorId, (viewCountMap.get(e.vendorId) || 0) + 1);
+    }
+
+    const data = vendorList.map((v: any) => {
+      const productCount = productCountMap.get(v.id) || 0;
+      const whatsappTaps30d = whatsappCountMap.get(v.id) || 0;
+      const productViews30d = viewCountMap.get(v.id) || 0;
+
+      // Health score: 0-100
+      // Products listed: up to 30 points (1 point per product, max 30)
+      // WhatsApp taps 30d: up to 35 points (1 point per tap, max 35)
+      // Product views 30d: up to 35 points (0.35 points per view, max 35)
+      const productScore = Math.min(productCount, 30);
+      const whatsappScore = Math.min(whatsappTaps30d, 35);
+      const viewScore = Math.min(Math.round(productViews30d * 0.35), 35);
+      const healthScore = Math.min(productScore + whatsappScore + viewScore, 100);
+
+      return {
+        id: v.id,
+        businessName: v.businessName,
+        tier: v.tier,
+        city: v.city,
+        productCount,
+        whatsappTaps30d,
+        productViews30d,
+        healthScore,
+        lastActive: v.createdAt,
+      };
+    });
+
+    const result = { source: "database", data };
+    cache.set(CACHE_KEYS.vendorHealth, result, 600);
+    res.json(result);
+  } catch (error) {
+    safeLogError("Vendor health query error", error);
+    res.status(500).json({ error: "Database query failed" });
   }
 });
 
