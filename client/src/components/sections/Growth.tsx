@@ -131,7 +131,7 @@ export function Growth({ kpis, growthData, vendors }: GrowthProps) {
       </div>
 
       {/* KPI Row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+      <div className="three-col-grid">
         <MetricCard label="Vendor Growth" value={kpis.vendorGrowth} format="percent" variant="emerald" delay={0} subtitle="Month over month" />
         <MetricCard label="GMV Growth" value={kpis.gmvGrowth} format="percent" variant="emerald" delay={1} subtitle="Month over month" />
         <MetricCard label="Order Growth" value={kpis.orderGrowth} format="percent" variant="emerald" delay={2} subtitle="Month over month" />
@@ -156,7 +156,7 @@ export function Growth({ kpis, growthData, vendors }: GrowthProps) {
       )}
 
       {/* Startup Health + Radar + Tier Distribution */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+      <div className="two-col-grid">
         <GlassSection>
           <SectionTitle sub="Key health indicators">Startup Health Check</SectionTitle>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -195,7 +195,7 @@ export function Growth({ kpis, growthData, vendors }: GrowthProps) {
           {tierData.length > 0 && (
             <GlassSection>
               <SectionTitle sub="Subscription tiers">Vendor Tiers</SectionTitle>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center' }}>
                 <PieChart width={100} height={100}>
                   <Pie data={tierData} cx={50} cy={50} innerRadius={28} outerRadius={45} paddingAngle={3} dataKey="value">
                     {tierData.map((entry, i) => <Cell key={i} fill={entry.color} />)}

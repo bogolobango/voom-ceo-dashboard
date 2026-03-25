@@ -164,6 +164,29 @@
     .three-col-grid { grid-template-columns: repeat(3, 1fr); }
   }
 
+  /* 4-col KPI grid: 2 on mobile → 4 on desktop */
+  .four-col-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.625rem;
+  }
+  @media (min-width: 640px) {
+    .four-col-grid { grid-template-columns: repeat(4, 1fr); gap: 0.75rem; }
+  }
+
+  /* 5-col grid: 2 on mobile → 3 on tablet → 5 on desktop */
+  .five-col-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.625rem;
+  }
+  @media (min-width: 640px) {
+    .five-col-grid { grid-template-columns: repeat(3, 1fr); gap: 0.75rem; }
+  }
+  @media (min-width: 1024px) {
+    .five-col-grid { grid-template-columns: repeat(5, 1fr); gap: 0.75rem; }
+  }
+
   .chart-main-grid {
     display: grid;
     grid-template-columns: 1fr;
@@ -173,10 +196,30 @@
     .chart-main-grid { grid-template-columns: 2fr 1fr; }
   }
 
+  /* Chart + sidebar: stacked on mobile, side-by-side on desktop */
+  .chart-sidebar-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+  @media (min-width: 768px) {
+    .chart-sidebar-grid { grid-template-columns: 3fr 2fr; }
+  }
+
   /* Metric card responsive — hide secondary text on tiny screens */
   @media (max-width: 380px) {
     .metric-subtitle { display: none; }
     .metric-trend-label { display: none; }
+  }
+
+  /* Table responsive: show mobile cards, hide desktop rows on mobile */
+  .table-header-row { display: none !important; }
+  .table-mobile-card { display: block !important; }
+  .table-desktop-row { display: none !important; }
+  @media (min-width: 768px) {
+    .table-header-row { display: grid !important; }
+    .table-mobile-card { display: none !important; }
+    .table-desktop-row { display: grid !important; }
   }
 
   /* Vendor table responsive */
