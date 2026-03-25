@@ -1,6 +1,6 @@
 /**
  * Orders Section — Arctic Glass Design System
- * Full order table with status, buyer, amount, and city breakdown
+ * Full order table with status, buyer, amount, payment method, and city
  */
 
 import { useState, useMemo } from 'react';
@@ -21,6 +21,12 @@ const STATUS_STYLES: Record<string, { bg: string; color: string }> = {
   cancelled: { bg: 'rgba(239,68,68,0.1)', color: '#EF4444' },
 };
 
+const PAYMENT_LABELS: Record<string, string> = {
+  pay_on_delivery: 'COD',
+  mobile_money: 'MoMo',
+  card: 'Card',
+};
+
 export function Orders({ orders, kpis }: OrdersProps) {
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
@@ -29,7 +35,8 @@ export function Orders({ orders, kpis }: OrdersProps) {
     const matchStatus = statusFilter === 'all' || o.status === statusFilter;
     const matchSearch = !search ||
       o.orderNumber.toLowerCase().includes(search.toLowerCase()) ||
-      (o.buyerName || '').toLowerCase().includes(search.toLowerCase());
+      (o.buyerName || '').toLowerCase().includes(search.toLowerCase()) ||
+      (o.vendorName || '').toLowerCase().includes(search.toLowerCase());
     return matchStatus && matchSearch;
   }), [orders, statusFilter, search]);
 
@@ -86,7 +93,7 @@ export function Orders({ orders, kpis }: OrdersProps) {
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Search by order number or buyer name..."
+          placeholder="Search by order number, buyer, or vendor..."
           style={{
             width: '100%', padding: '0.75rem 1rem 0.75rem 2.5rem',
             borderRadius: '0.875rem', border: '1px solid rgba(79,70,229,0.12)',
@@ -103,12 +110,12 @@ export function Orders({ orders, kpis }: OrdersProps) {
       {/* Orders Table */}
       <div className="glass-card" style={{ overflow: 'hidden', padding: 0 }}>
         <div style={{
-          display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr 1fr',
+          display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 0.8fr 0.8fr 0.8fr',
           padding: '0.875rem 1.25rem',
           borderBottom: '1px solid rgba(79,70,229,0.06)',
           background: 'rgba(248,250,252,0.8)',
         }}>
-          {['Order #', 'Buyer', 'City', 'Amount', 'Status'].map(h => (
+          {['Order #', 'Buyer', 'Vendor', 'Amount', 'Payment', 'Status'].map(h => (
             <p key={h} style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94A3B8', letterSpacing: '0.06em', textTransform: 'uppercase', margin: 0 }}>
               {h}
             </p>
@@ -121,7 +128,7 @@ export function Orders({ orders, kpis }: OrdersProps) {
               <div
                 key={order.id}
                 style={{
-                  display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr 1fr',
+                  display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 0.8fr 0.8fr 0.8fr',
                   padding: '0.875rem 1.25rem',
                   borderBottom: i < sorted.length - 1 ? '1px solid rgba(79,70,229,0.04)' : 'none',
                   transition: 'background 0.15s ease',
@@ -135,11 +142,14 @@ export function Orders({ orders, kpis }: OrdersProps) {
                 <span style={{ fontSize: '0.8rem', color: '#0F172A', display: 'flex', alignItems: 'center' }}>
                   {order.buyerName || 'Anonymous'}
                 </span>
-                <span style={{ fontSize: '0.8rem', color: '#475569', display: 'flex', alignItems: 'center' }}>
-                  {order.shippingCity || '—'}
+                <span style={{ fontSize: '0.75rem', color: '#475569', display: 'flex', alignItems: 'center' }}>
+                  {order.vendorName || '—'}
                 </span>
                 <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#0F172A', fontFamily: 'Space Grotesk', display: 'flex', alignItems: 'center' }}>
                   GH₵ {parseFloat(order.totalAmount).toFixed(0)}
+                </span>
+                <span style={{ fontSize: '0.72rem', color: '#64748B', display: 'flex', alignItems: 'center' }}>
+                  {PAYMENT_LABELS[order.paymentMethod] || order.paymentMethod}
                 </span>
                 <div style={{ display: 'flex', alignItems: 'center' }}>
                   <span style={{ fontSize: '0.7rem', fontWeight: 600, background: st.bg, color: st.color, padding: '0.2rem 0.6rem', borderRadius: 999 }}>

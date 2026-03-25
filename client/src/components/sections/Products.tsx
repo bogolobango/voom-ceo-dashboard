@@ -1,14 +1,18 @@
 /**
  * Products Section — Arctic Glass Design System
  * Product catalog metrics, category breakdown, and inventory health
+ * Now powered by REAL data from Render PostgreSQL
  */
 
+import { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { MetricCard } from '../MetricCard';
-import type { DashboardKPIs } from '../../lib/voomApi';
+import type { DashboardKPIs, Product } from '../../lib/voomApi';
+import { getProductMakeDist, getProductCategoryDist, getProductConditionDist } from '../../lib/voomApi';
 
 interface ProductsProps {
   kpis: DashboardKPIs;
+  products: Product[];
 }
 
 function GlassSection({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
@@ -24,28 +28,7 @@ function SectionTitle({ children, sub }: { children: React.ReactNode; sub?: stri
   );
 }
 
-const categoryData = [
-  { category: 'Engine Parts', count: 48, color: '#4F46E5' },
-  { category: 'Electrical', count: 36, color: '#7C3AED' },
-  { category: 'Body Parts', count: 29, color: '#0EA5E9' },
-  { category: 'Brakes', count: 24, color: '#059669' },
-  { category: 'Cooling', count: 21, color: '#D97706' },
-  { category: 'Suspension', count: 18, color: '#E11D48' },
-  { category: 'Batteries', count: 15, color: '#F59E0B' },
-  { category: 'Tyres', count: 12, color: '#64748B' },
-  { category: 'Filters', count: 11, color: '#10B981' },
-  { category: 'Other', count: 33, color: '#94A3B8' },
-];
-
-const makeData = [
-  { make: 'Toyota', products: 82 },
-  { make: 'Honda', products: 54 },
-  { make: 'Nissan', products: 38 },
-  { make: 'Hyundai', products: 29 },
-  { make: 'Mercedes', products: 21 },
-  { make: 'Ford', products: 14 },
-  { make: 'Kia', products: 9 },
-];
+const CATEGORY_COLORS = ['#4F46E5', '#7C3AED', '#0EA5E9', '#059669', '#D97706', '#E11D48', '#F59E0B', '#64748B', '#10B981', '#94A3B8'];
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
@@ -65,7 +48,17 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   );
 };
 
-export function Products({ kpis }: ProductsProps) {
+export function Products({ kpis, products }: ProductsProps) {
+  const makeData = useMemo(() => getProductMakeDist(products), [products]);
+  const categoryData = useMemo(() => getProductCategoryDist(products), [products]);
+  const conditionDist = useMemo(() => getProductConditionDist(products), [products]);
+
+  const outOfStock = useMemo(() => products.filter(p => p.status === 'out_of_stock' || p.quantity === 0).length, [products]);
+  const avgViews = useMemo(() => {
+    const withViews = products.filter(p => p.views != null);
+    return withViews.length > 0 ? Math.round(withViews.reduce((s, p) => s + (p.views || 0), 0) / withViews.length) : 0;
+  }, [products]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       <div>
@@ -78,10 +71,10 @@ export function Products({ kpis }: ProductsProps) {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
-        <MetricCard label="Total Products" value={kpis.totalProducts} trend={12.3} variant="indigo" delay={0} />
+        <MetricCard label="Total Products" value={kpis.totalProducts} variant="indigo" delay={0} />
         <MetricCard label="Categories" value={kpis.totalCategories} variant="indigo" delay={1} />
-        <MetricCard label="Avg Views/Product" value={34} variant="amber" delay={2} subtitle="Last 30 days" />
-        <MetricCard label="Out of Stock" value={8} variant="rose" delay={3} subtitle="Needs restocking" />
+        <MetricCard label="Avg Views/Product" value={avgViews} variant="amber" delay={2} subtitle="All time" />
+        <MetricCard label="Out of Stock" value={outOfStock} variant="rose" delay={3} subtitle="Needs restocking" />
       </div>
 
       {/* By Make + By Category */}
@@ -92,7 +85,7 @@ export function Products({ kpis }: ProductsProps) {
             <BarChart data={makeData} layout="vertical" margin={{ top: 0, right: 16, bottom: 0, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(79,70,229,0.05)" horizontal={false} />
               <XAxis type="number" tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} />
-              <YAxis type="category" dataKey="make" tick={{ fontSize: 11, fill: '#475569', fontFamily: 'Plus Jakarta Sans' }} tickLine={false} axisLine={false} width={60} />
+              <YAxis type="category" dataKey="make" tick={{ fontSize: 11, fill: '#475569', fontFamily: 'Plus Jakarta Sans' }} tickLine={false} axisLine={false} width={80} />
               <Tooltip content={<CustomTooltip />} />
               <Bar dataKey="products" fill="#4F46E5" radius={[0, 4, 4, 0]} />
             </BarChart>
@@ -102,8 +95,9 @@ export function Products({ kpis }: ProductsProps) {
         <GlassSection>
           <SectionTitle sub="By part category">Category Breakdown</SectionTitle>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: 260, overflowY: 'auto' }}>
-            {categoryData.map(cat => {
-              const pct = Math.round((cat.count / kpis.totalProducts) * 100);
+            {categoryData.map((cat, i) => {
+              const total = products.length || 1;
+              const pct = Math.round((cat.count / total) * 100);
               return (
                 <div key={cat.category}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
@@ -113,7 +107,7 @@ export function Products({ kpis }: ProductsProps) {
                     </span>
                   </div>
                   <div className="liquid-bar" style={{ height: 5 }}>
-                    <div className="liquid-bar-fill" style={{ width: `${pct}%`, background: cat.color }} />
+                    <div className="liquid-bar-fill" style={{ width: `${pct}%`, background: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }} />
                   </div>
                 </div>
               );
@@ -127,9 +121,9 @@ export function Products({ kpis }: ProductsProps) {
         <SectionTitle sub="Product condition distribution">Inventory Health</SectionTitle>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
           {[
-            { label: 'New Parts', count: Math.round(kpis.totalProducts * 0.42), color: '#059669', pct: 42 },
-            { label: 'Used Parts', count: Math.round(kpis.totalProducts * 0.45), color: '#D97706', pct: 45 },
-            { label: 'Refurbished', count: Math.round(kpis.totalProducts * 0.13), color: '#4F46E5', pct: 13 },
+            { label: 'New Parts', ...conditionDist.new, color: '#059669' },
+            { label: 'Used Parts', ...conditionDist.used, color: '#D97706' },
+            { label: 'Refurbished', ...conditionDist.refurbished, color: '#4F46E5' },
           ].map(item => (
             <div key={item.label} style={{
               padding: '1rem',

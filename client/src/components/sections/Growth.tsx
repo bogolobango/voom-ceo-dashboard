@@ -1,14 +1,18 @@
 /**
  * Growth Section — Arctic Glass Design System
- * Startup health KPIs, cohort analysis, and growth trajectory
+ * Startup health KPIs, growth trajectory, and vendor tier distribution
+ * Now powered by REAL data from Render PostgreSQL
  */
 
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, RadarChart, Radar, PolarGrid, PolarAngleAxis } from 'recharts';
+import { useMemo } from 'react';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, RadarChart, Radar, PolarGrid, PolarAngleAxis, PieChart, Pie, Cell } from 'recharts';
 import { MetricCard } from '../MetricCard';
-import type { DashboardKPIs } from '../../lib/voomApi';
+import type { DashboardKPIs, GrowthData, Vendor } from '../../lib/voomApi';
 
 interface GrowthProps {
   kpis: DashboardKPIs;
+  growthData: GrowthData | null;
+  vendors: Vendor[];
 }
 
 function GlassSection({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
@@ -23,24 +27,6 @@ function SectionTitle({ children, sub }: { children: React.ReactNode; sub?: stri
     </div>
   );
 }
-
-const growthData = [
-  { month: 'Oct', vendors: 2, products: 12, orders: 3, gmv: 450 },
-  { month: 'Nov', vendors: 5, products: 34, orders: 11, gmv: 1820 },
-  { month: 'Dec', vendors: 9, products: 78, orders: 24, gmv: 4200 },
-  { month: 'Jan', vendors: 18, products: 134, orders: 41, gmv: 8900 },
-  { month: 'Feb', vendors: 28, products: 198, orders: 63, gmv: 15400 },
-  { month: 'Mar', vendors: 34, products: 247, orders: 48, gmv: 19800 },
-];
-
-const radarData = [
-  { metric: 'Supply', value: 68 },
-  { metric: 'Demand', value: 42 },
-  { metric: 'GMV', value: 35 },
-  { metric: 'Retention', value: 71 },
-  { metric: 'NPS', value: 82 },
-  { metric: 'Coverage', value: 28 },
-];
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
@@ -60,14 +46,77 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   );
 };
 
-export function Growth({ kpis }: GrowthProps) {
+const TIER_COLORS: Record<string, string> = {
+  free: '#94A3B8',
+  starter: '#4F46E5',
+  pro: '#7C3AED',
+  business: '#059669',
+  enterprise: '#D97706',
+};
+
+function monthLabel(yyyymm: string): string {
+  const [, m] = yyyymm.split('-');
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return months[parseInt(m, 10) - 1] || yyyymm;
+}
+
+export function Growth({ kpis, growthData, vendors }: GrowthProps) {
+  // Build cumulative growth data from API
+  const growthChartData = useMemo(() => {
+    if (!growthData) return [];
+    const months = new Set<string>();
+    growthData.vendorGrowth.forEach(v => months.add(v.month));
+    growthData.orderGrowth.forEach(o => months.add(o.month));
+    growthData.productGrowth.forEach(p => months.add(p.month));
+
+    const sortedMonths = Array.from(months).sort();
+    const vendorMap = new Map(growthData.vendorGrowth.map(v => [v.month, v.count]));
+    const orderMap = new Map(growthData.orderGrowth.map(o => [o.month, o.count]));
+    const productMap = new Map(growthData.productGrowth.map(p => [p.month, p.count]));
+
+    let cVendors = 0, cOrders = 0, cProducts = 0;
+    return sortedMonths.map(month => {
+      cVendors += vendorMap.get(month) || 0;
+      cOrders += orderMap.get(month) || 0;
+      cProducts += productMap.get(month) || 0;
+      return {
+        month: monthLabel(month),
+        vendors: cVendors,
+        orders: cOrders,
+        products: cProducts,
+      };
+    });
+  }, [growthData]);
+
+  // Tier distribution from real vendor data
+  const tierData = useMemo(() => {
+    const dist: Record<string, number> = {};
+    vendors.forEach(v => {
+      dist[v.tier] = (dist[v.tier] || 0) + 1;
+    });
+    return Object.entries(dist).map(([tier, count]) => ({
+      name: tier.charAt(0).toUpperCase() + tier.slice(1),
+      value: count,
+      color: TIER_COLORS[tier] || '#94A3B8',
+    }));
+  }, [vendors]);
+
+  const radarData = useMemo(() => [
+    { metric: 'Supply', value: Math.min(100, kpis.totalProducts) },
+    { metric: 'Demand', value: Math.min(100, kpis.totalPartRequests * 2) },
+    { metric: 'GMV', value: Math.min(100, Math.round(kpis.totalGMV / 1000)) },
+    { metric: 'Vendors', value: Math.min(100, kpis.totalVendors * 3) },
+    { metric: 'Completion', value: Math.round(kpis.orderCompletionRate) },
+    { metric: 'Categories', value: Math.min(100, kpis.totalCategories * 5) },
+  ], [kpis]);
+
   const startupHealth = [
-    { label: 'Vendor Growth MoM', value: `+${kpis.vendorGrowth.toFixed(1)}%`, color: '#059669', status: 'good' },
-    { label: 'GMV Growth MoM', value: `+${kpis.gmvGrowth.toFixed(1)}%`, color: '#059669', status: 'good' },
-    { label: 'Order Growth MoM', value: `+${kpis.orderGrowth.toFixed(1)}%`, color: '#059669', status: 'good' },
-    { label: 'Lead CVR', value: `${kpis.leadConversionRate}%`, color: '#D97706', status: 'warn' },
-    { label: 'Vendor Approval Rate', value: `${kpis.vendorApprovalRate.toFixed(0)}%`, color: '#4F46E5', status: 'good' },
-    { label: 'Order Completion Rate', value: `${kpis.orderCompletionRate.toFixed(0)}%`, color: '#4F46E5', status: 'good' },
+    { label: 'Vendor Approval Rate', value: `${kpis.vendorApprovalRate.toFixed(0)}%`, color: kpis.vendorApprovalRate > 50 ? '#059669' : '#D97706' },
+    { label: 'Order Completion Rate', value: `${kpis.orderCompletionRate.toFixed(0)}%`, color: kpis.orderCompletionRate > 50 ? '#059669' : '#D97706' },
+    { label: 'Part Request Fill Rate', value: kpis.totalPartRequests > 0 ? `${Math.round((kpis.fulfilledPartRequests / kpis.totalPartRequests) * 100)}%` : '0%', color: '#4F46E5' },
+    { label: 'Total Users', value: String(kpis.totalUsers), color: '#4F46E5' },
+    { label: 'Total GMV', value: `GH₵ ${kpis.totalGMV.toLocaleString()}`, color: '#059669' },
+    { label: 'Commission Earned', value: `GH₵ ${kpis.totalCommission.toLocaleString()}`, color: '#059669' },
   ];
 
   return (
@@ -77,7 +126,7 @@ export function Growth({ kpis }: GrowthProps) {
           Growth Dashboard
         </h2>
         <p style={{ fontSize: '0.8125rem', color: '#94A3B8', marginTop: '0.25rem' }}>
-          VOOM Ghana · Early Stage · Launch trajectory since October 2025
+          VOOM Ghana · Marketplace growth trajectory
         </p>
       </div>
 
@@ -89,21 +138,24 @@ export function Growth({ kpis }: GrowthProps) {
       </div>
 
       {/* Growth Trajectory */}
-      <GlassSection>
-        <SectionTitle sub="Oct 2025 – Mar 2026">Growth Trajectory</SectionTitle>
-        <ResponsiveContainer width="100%" height={240}>
-          <LineChart data={growthData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(79,70,229,0.05)" />
-            <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} />
-            <YAxis tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} />
-            <Tooltip content={<CustomTooltip />} />
-            <Line type="monotone" dataKey="vendors" stroke="#4F46E5" strokeWidth={2.5} dot={{ fill: '#4F46E5', r: 4 }} name="Vendors" />
-            <Line type="monotone" dataKey="orders" stroke="#059669" strokeWidth={2.5} dot={{ fill: '#059669', r: 4 }} name="Orders" />
-          </LineChart>
-        </ResponsiveContainer>
-      </GlassSection>
+      {growthChartData.length > 0 && (
+        <GlassSection>
+          <SectionTitle sub="Cumulative growth over time">Growth Trajectory</SectionTitle>
+          <ResponsiveContainer width="100%" height={240}>
+            <LineChart data={growthChartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(79,70,229,0.05)" />
+              <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} />
+              <YAxis tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} />
+              <Tooltip content={<CustomTooltip />} />
+              <Line type="monotone" dataKey="vendors" stroke="#4F46E5" strokeWidth={2.5} dot={{ fill: '#4F46E5', r: 4 }} name="Vendors" />
+              <Line type="monotone" dataKey="orders" stroke="#059669" strokeWidth={2.5} dot={{ fill: '#059669', r: 4 }} name="Orders" />
+              <Line type="monotone" dataKey="products" stroke="#D97706" strokeWidth={2.5} dot={{ fill: '#D97706', r: 4 }} name="Products" />
+            </LineChart>
+          </ResponsiveContainer>
+        </GlassSection>
+      )}
 
-      {/* Startup Health + Radar */}
+      {/* Startup Health + Radar + Tier Distribution */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
         <GlassSection>
           <SectionTitle sub="Key health indicators">Startup Health Check</SectionTitle>
@@ -128,16 +180,42 @@ export function Growth({ kpis }: GrowthProps) {
           </div>
         </GlassSection>
 
-        <GlassSection>
-          <SectionTitle sub="Marketplace maturity score">Platform Radar</SectionTitle>
-          <ResponsiveContainer width="100%" height={240}>
-            <RadarChart data={radarData}>
-              <PolarGrid stroke="rgba(79,70,229,0.1)" />
-              <PolarAngleAxis dataKey="metric" tick={{ fontSize: 11, fill: '#64748B', fontFamily: 'Plus Jakarta Sans' }} />
-              <Radar name="VOOM" dataKey="value" stroke="#4F46E5" fill="#4F46E5" fillOpacity={0.15} strokeWidth={2} />
-            </RadarChart>
-          </ResponsiveContainer>
-        </GlassSection>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <GlassSection>
+            <SectionTitle sub="Marketplace maturity score">Platform Radar</SectionTitle>
+            <ResponsiveContainer width="100%" height={200}>
+              <RadarChart data={radarData}>
+                <PolarGrid stroke="rgba(79,70,229,0.1)" />
+                <PolarAngleAxis dataKey="metric" tick={{ fontSize: 11, fill: '#64748B', fontFamily: 'Plus Jakarta Sans' }} />
+                <Radar name="VOOM" dataKey="value" stroke="#4F46E5" fill="#4F46E5" fillOpacity={0.15} strokeWidth={2} />
+              </RadarChart>
+            </ResponsiveContainer>
+          </GlassSection>
+
+          {tierData.length > 0 && (
+            <GlassSection>
+              <SectionTitle sub="Subscription tiers">Vendor Tiers</SectionTitle>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                <PieChart width={100} height={100}>
+                  <Pie data={tierData} cx={50} cy={50} innerRadius={28} outerRadius={45} paddingAngle={3} dataKey="value">
+                    {tierData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                  </Pie>
+                </PieChart>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', flex: 1 }}>
+                  {tierData.map(item => (
+                    <div key={item.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <div style={{ width: 7, height: 7, borderRadius: '50%', background: item.color }} />
+                        <span style={{ fontSize: '0.75rem', color: '#475569' }}>{item.name}</span>
+                      </div>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#0F172A', fontFamily: 'Space Grotesk' }}>{item.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </GlassSection>
+          )}
+        </div>
       </div>
 
       {/* Milestones */}
@@ -148,8 +226,9 @@ export function Growth({ kpis }: GrowthProps) {
             { milestone: 'Marketplace MVP launched', date: 'Oct 2025', done: true },
             { milestone: 'First 10 vendors onboarded', date: 'Nov 2025', done: true },
             { milestone: 'First paid order processed', date: 'Nov 2025', done: true },
-            { milestone: 'Tonaton lead scraper built', date: 'Mar 2026', done: true },
-            { milestone: 'WhatsApp broadcast campaign', date: 'Mar 2026', done: true },
+            { milestone: 'Part request system launched', date: 'Jan 2026', done: true },
+            { milestone: 'Vendor subscription tiers', date: 'Feb 2026', done: true },
+            { milestone: 'CEO Dashboard connected to Render DB', date: 'Mar 2026', done: true },
             { milestone: '100 active vendors', date: 'Apr 2026', done: false },
             { milestone: 'GH₵ 100k GMV milestone', date: 'May 2026', done: false },
             { milestone: 'Kumasi expansion', date: 'Q3 2026', done: false },
