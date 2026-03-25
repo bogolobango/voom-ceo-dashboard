@@ -1,6 +1,7 @@
 /**
  * Part Requests Section — Arctic Glass Design System
  * Real buyer demand pipeline from database
+ * Mobile: card view · Desktop: table grid
  */
 
 import { useState, useMemo } from 'react';
@@ -75,7 +76,7 @@ export function PartRequests({ partRequests, kpis }: PartRequestsProps) {
       </div>
 
       {/* KPI Row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
+      <div className="four-col-grid">
         <MetricCard label="Total Requests" value={kpis.totalPartRequests} variant="indigo" delay={0} subtitle="All time" />
         <MetricCard label="Open" value={kpis.openPartRequests} variant="amber" delay={1} subtitle="Awaiting fulfillment" />
         <MetricCard label="Fulfilled" value={kpis.fulfilledPartRequests} variant="emerald" delay={2}
@@ -87,7 +88,7 @@ export function PartRequests({ partRequests, kpis }: PartRequestsProps) {
       {topMakes.length > 0 && (
         <GlassSection>
           <SectionTitle sub="Most requested vehicle makes">Demand Signals</SectionTitle>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>
+          <div className="five-col-grid">
             {topMakes.map(([make, count], i) => {
               const colors = ['#4F46E5', '#059669', '#D97706', '#7C3AED', '#0EA5E9'];
               return (
@@ -98,7 +99,7 @@ export function PartRequests({ partRequests, kpis }: PartRequestsProps) {
                   border: `1px solid ${colors[i]}20`,
                   textAlign: 'center',
                 }}>
-                  <p style={{ fontSize: '1.5rem', fontWeight: 800, color: colors[i], fontFamily: 'Space Grotesk', margin: 0 }}>
+                  <p style={{ fontSize: '1.25rem', fontWeight: 800, color: colors[i], fontFamily: 'Space Grotesk', margin: 0 }}>
                     {count}
                   </p>
                   <p style={{ fontSize: '0.75rem', color: '#475569', marginTop: '0.25rem', fontWeight: 500 }}>{make}</p>
@@ -110,13 +111,13 @@ export function PartRequests({ partRequests, kpis }: PartRequestsProps) {
       )}
 
       {/* Status Filter */}
-      <div className="glass-card" style={{ padding: '0.375rem', display: 'flex', gap: '0.25rem' }}>
+      <div className="glass-card" style={{ padding: '0.375rem', display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
         {(['all', 'open', 'fulfilled', 'closed'] as const).map(s => (
           <button
             key={s}
             onClick={() => setStatusFilter(s)}
             style={{
-              flex: 1, padding: '0.5rem', borderRadius: '0.625rem', border: 'none',
+              flex: 1, minWidth: 60, padding: '0.5rem', borderRadius: '0.625rem', border: 'none',
               background: statusFilter === s ? '#4F46E5' : 'transparent',
               color: statusFilter === s ? 'white' : '#64748B',
               fontWeight: 600, fontSize: '0.8125rem', cursor: 'pointer',
@@ -149,8 +150,9 @@ export function PartRequests({ partRequests, kpis }: PartRequestsProps) {
 
       {/* Requests Table */}
       <div className="glass-card" style={{ overflow: 'hidden', padding: 0 }}>
-        <div style={{
-          display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 0.8fr',
+        {/* Desktop header */}
+        <div className="table-header-row" style={{
+          gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 0.8fr',
           padding: '0.875rem 1.25rem',
           borderBottom: '1px solid rgba(79,70,229,0.06)',
           background: 'rgba(248,250,252,0.8)',
@@ -166,36 +168,67 @@ export function PartRequests({ partRequests, kpis }: PartRequestsProps) {
             const st = STATUS_STYLES[req.status] || STATUS_STYLES.open;
             const vehicle = [req.make, req.model, req.year].filter(Boolean).join(' ') || '—';
             return (
-              <div
-                key={req.id}
-                style={{
-                  display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 0.8fr',
-                  padding: '0.875rem 1.25rem',
+              <div key={req.id}>
+                {/* Mobile card */}
+                <div className="table-mobile-card" style={{
+                  padding: '0.875rem 1rem',
                   borderBottom: i < filtered.length - 1 ? '1px solid rgba(79,70,229,0.04)' : 'none',
-                  transition: 'background 0.15s ease',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(79,70,229,0.02)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#0F172A', display: 'flex', alignItems: 'center' }}>
-                  {req.partName}
-                </span>
-                <span style={{ fontSize: '0.75rem', color: '#475569', display: 'flex', alignItems: 'center' }}>
-                  {vehicle}
-                </span>
-                <span style={{ fontSize: '0.8rem', color: '#0F172A', display: 'flex', alignItems: 'center' }}>
-                  {req.guestName || '—'}
-                </span>
-                <span style={{ fontSize: '0.8rem', color: '#475569', fontFamily: 'Space Grotesk', display: 'flex', alignItems: 'center' }}>
-                  {req.contactPhone}
-                </span>
-                <span style={{ fontSize: '0.8rem', color: '#475569', display: 'flex', alignItems: 'center' }}>
-                  {req.budget || '—'}
-                </span>
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.65rem', fontWeight: 600, background: st.bg, color: st.color, padding: '0.2rem 0.5rem', borderRadius: 999 }}>
-                    {st.label}
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.375rem' }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#0F172A' }}>
+                        {req.partName}
+                      </span>
+                      <p style={{ fontSize: '0.75rem', color: '#475569', margin: '0.125rem 0 0' }}>
+                        {vehicle}
+                      </p>
+                    </div>
+                    <span style={{ fontSize: '0.65rem', fontWeight: 600, background: st.bg, color: st.color, padding: '0.2rem 0.5rem', borderRadius: 999, flexShrink: 0, marginLeft: '0.5rem' }}>
+                      {st.label}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                      {req.guestName || '—'}
+                    </span>
+                    <span style={{ fontSize: '0.8rem', color: '#475569', fontWeight: 500 }}>
+                      {req.budget || '—'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Desktop row */}
+                <div
+                  className="table-desktop-row"
+                  style={{
+                    gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 0.8fr',
+                    padding: '0.875rem 1.25rem',
+                    borderBottom: i < filtered.length - 1 ? '1px solid rgba(79,70,229,0.04)' : 'none',
+                    transition: 'background 0.15s ease',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(79,70,229,0.02)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#0F172A', display: 'flex', alignItems: 'center' }}>
+                    {req.partName}
                   </span>
+                  <span style={{ fontSize: '0.75rem', color: '#475569', display: 'flex', alignItems: 'center' }}>
+                    {vehicle}
+                  </span>
+                  <span style={{ fontSize: '0.8rem', color: '#0F172A', display: 'flex', alignItems: 'center' }}>
+                    {req.guestName || '—'}
+                  </span>
+                  <span style={{ fontSize: '0.8rem', color: '#475569', fontFamily: 'Space Grotesk', display: 'flex', alignItems: 'center' }}>
+                    {req.contactPhone}
+                  </span>
+                  <span style={{ fontSize: '0.8rem', color: '#475569', display: 'flex', alignItems: 'center' }}>
+                    {req.budget || '—'}
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.65rem', fontWeight: 600, background: st.bg, color: st.color, padding: '0.2rem 0.5rem', borderRadius: 999 }}>
+                      {st.label}
+                    </span>
+                  </div>
                 </div>
               </div>
             );

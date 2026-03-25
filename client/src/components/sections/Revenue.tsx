@@ -106,7 +106,7 @@ export function Revenue({ orders, kpis, revenueData }: RevenueProps) {
       </div>
 
       {/* KPI Row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
+      <div className="four-col-grid">
         <MetricCard label="Total GMV" value={kpis.totalGMV} format="cedis" trend={kpis.gmvGrowth} variant="emerald" delay={0} />
         <MetricCard label="Commission Earned" value={kpis.totalCommission} format="cedis" variant="indigo" delay={1} subtitle="12% default rate" />
         <MetricCard label="Avg Order Value" value={kpis.avgOrderValue} format="cedis" variant="indigo" delay={2} />
@@ -134,7 +134,7 @@ export function Revenue({ orders, kpis, revenueData }: RevenueProps) {
       </GlassSection>
 
       {/* Weekly + Regional/Payment */}
-      <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: '1.25rem' }}>
+      <div className="chart-sidebar-grid">
         <GlassSection>
           <SectionTitle sub="Weekly totals">Weekly Revenue</SectionTitle>
           <ResponsiveContainer width="100%" height={200}>

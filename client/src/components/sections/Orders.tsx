@@ -1,6 +1,7 @@
 /**
  * Orders Section — Arctic Glass Design System
  * Full order table with status, buyer, amount, payment method, and city
+ * Mobile: card view · Desktop: table grid
  */
 
 import { useState, useMemo } from 'react';
@@ -62,7 +63,7 @@ export function Orders({ orders, kpis }: OrdersProps) {
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
+      <div className="four-col-grid">
         <MetricCard label="Total Orders" value={kpis.totalOrders} trend={kpis.orderGrowth} variant="indigo" delay={0} />
         <MetricCard label="Delivered" value={kpis.completedOrders} variant="emerald" delay={1} />
         <MetricCard label="Completion Rate" value={kpis.orderCompletionRate} format="percent" variant="emerald" delay={2} />
@@ -109,8 +110,9 @@ export function Orders({ orders, kpis }: OrdersProps) {
 
       {/* Orders Table */}
       <div className="glass-card" style={{ overflow: 'hidden', padding: 0 }}>
-        <div style={{
-          display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 0.8fr 0.8fr 0.8fr',
+        {/* Desktop header */}
+        <div className="table-header-row" style={{
+          gridTemplateColumns: '1.2fr 1fr 1fr 0.8fr 0.8fr 0.8fr',
           padding: '0.875rem 1.25rem',
           borderBottom: '1px solid rgba(79,70,229,0.06)',
           background: 'rgba(248,250,252,0.8)',
@@ -125,36 +127,67 @@ export function Orders({ orders, kpis }: OrdersProps) {
           {sorted.map((order, i) => {
             const st = STATUS_STYLES[order.status] || STATUS_STYLES.pending;
             return (
-              <div
-                key={order.id}
-                style={{
-                  display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 0.8fr 0.8fr 0.8fr',
-                  padding: '0.875rem 1.25rem',
+              <div key={order.id}>
+                {/* Mobile card */}
+                <div className="table-mobile-card" style={{
+                  padding: '0.875rem 1rem',
                   borderBottom: i < sorted.length - 1 ? '1px solid rgba(79,70,229,0.04)' : 'none',
-                  transition: 'background 0.15s ease',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(79,70,229,0.02)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#4F46E5', fontFamily: 'Space Grotesk', display: 'flex', alignItems: 'center' }}>
-                  {order.orderNumber}
-                </span>
-                <span style={{ fontSize: '0.8rem', color: '#0F172A', display: 'flex', alignItems: 'center' }}>
-                  {order.buyerName || 'Anonymous'}
-                </span>
-                <span style={{ fontSize: '0.75rem', color: '#475569', display: 'flex', alignItems: 'center' }}>
-                  {order.vendorName || '—'}
-                </span>
-                <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#0F172A', fontFamily: 'Space Grotesk', display: 'flex', alignItems: 'center' }}>
-                  GH₵ {parseFloat(order.totalAmount).toFixed(0)}
-                </span>
-                <span style={{ fontSize: '0.72rem', color: '#64748B', display: 'flex', alignItems: 'center' }}>
-                  {PAYMENT_LABELS[order.paymentMethod] || order.paymentMethod}
-                </span>
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.7rem', fontWeight: 600, background: st.bg, color: st.color, padding: '0.2rem 0.6rem', borderRadius: 999 }}>
-                    {order.status}
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#4F46E5', fontFamily: 'Space Grotesk' }}>
+                        {order.orderNumber}
+                      </span>
+                      <p style={{ fontSize: '0.75rem', color: '#475569', margin: '0.125rem 0 0' }}>
+                        {order.buyerName || 'Anonymous'}
+                      </p>
+                    </div>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 600, background: st.bg, color: st.color, padding: '0.2rem 0.6rem', borderRadius: 999, flexShrink: 0 }}>
+                      {order.status}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                      {order.vendorName || '—'} · {PAYMENT_LABELS[order.paymentMethod] || order.paymentMethod}
+                    </span>
+                    <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#0F172A', fontFamily: 'Space Grotesk' }}>
+                      GH₵ {parseFloat(order.totalAmount).toFixed(0)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Desktop row */}
+                <div
+                  className="table-desktop-row"
+                  style={{
+                    gridTemplateColumns: '1.2fr 1fr 1fr 0.8fr 0.8fr 0.8fr',
+                    padding: '0.875rem 1.25rem',
+                    borderBottom: i < sorted.length - 1 ? '1px solid rgba(79,70,229,0.04)' : 'none',
+                    transition: 'background 0.15s ease',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(79,70,229,0.02)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#4F46E5', fontFamily: 'Space Grotesk', display: 'flex', alignItems: 'center' }}>
+                    {order.orderNumber}
                   </span>
+                  <span style={{ fontSize: '0.8rem', color: '#0F172A', display: 'flex', alignItems: 'center' }}>
+                    {order.buyerName || 'Anonymous'}
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: '#475569', display: 'flex', alignItems: 'center' }}>
+                    {order.vendorName || '—'}
+                  </span>
+                  <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#0F172A', fontFamily: 'Space Grotesk', display: 'flex', alignItems: 'center' }}>
+                    GH₵ {parseFloat(order.totalAmount).toFixed(0)}
+                  </span>
+                  <span style={{ fontSize: '0.72rem', color: '#64748B', display: 'flex', alignItems: 'center' }}>
+                    {PAYMENT_LABELS[order.paymentMethod] || order.paymentMethod}
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 600, background: st.bg, color: st.color, padding: '0.2rem 0.6rem', borderRadius: 999 }}>
+                      {order.status}
+                    </span>
+                  </div>
                 </div>
               </div>
             );

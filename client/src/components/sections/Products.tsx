@@ -70,7 +70,7 @@ export function Products({ kpis, products }: ProductsProps) {
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
+      <div className="four-col-grid">
         <MetricCard label="Total Products" value={kpis.totalProducts} variant="indigo" delay={0} />
         <MetricCard label="Categories" value={kpis.totalCategories} variant="indigo" delay={1} />
         <MetricCard label="Avg Views/Product" value={avgViews} variant="amber" delay={2} subtitle="All time" />
@@ -78,7 +78,7 @@ export function Products({ kpis, products }: ProductsProps) {
       </div>
 
       {/* By Make + By Category */}
-      <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: '1.25rem' }}>
+      <div className="chart-sidebar-grid">
         <GlassSection>
           <SectionTitle sub="Top vehicle makes by listing count">Products by Make</SectionTitle>
           <ResponsiveContainer width="100%" height={220}>
@@ -119,7 +119,7 @@ export function Products({ kpis, products }: ProductsProps) {
       {/* Condition breakdown */}
       <GlassSection>
         <SectionTitle sub="Product condition distribution">Inventory Health</SectionTitle>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+        <div className="three-col-grid">
           {[
             { label: 'New Parts', ...conditionDist.new, color: '#059669' },
             { label: 'Used Parts', ...conditionDist.used, color: '#D97706' },
@@ -132,7 +132,7 @@ export function Products({ kpis, products }: ProductsProps) {
               border: `1px solid ${item.color}20`,
               textAlign: 'center',
             }}>
-              <p style={{ fontSize: '2rem', fontWeight: 800, color: item.color, fontFamily: 'Space Grotesk', margin: 0, lineHeight: 1 }}>
+              <p style={{ fontSize: '1.5rem', fontWeight: 800, color: item.color, fontFamily: 'Space Grotesk', margin: 0, lineHeight: 1 }}>
                 {item.pct}%
               </p>
               <p style={{ fontSize: '0.8125rem', color: '#475569', marginTop: '0.375rem', fontWeight: 500 }}>{item.label}</p>
