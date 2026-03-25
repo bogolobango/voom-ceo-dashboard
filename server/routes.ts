@@ -549,23 +549,26 @@ router.get("/api/briefing", async (_req, res) => {
       .gte("createdAt", twentyFourHoursAgo);
 
     const queryCountMap = new Map<string, number>();
-    const zeroResultQueries: string[] = [];
+    const queryResultMap = new Map<string, number>();
+    const zeroResultMap = new Map<string, number>();
     for (const evt of recentSearchEvents || []) {
-      const meta = evt.metadata as Record<string, any> | null;
+      const meta = evt.metadata as Record<string, unknown> | null;
       if (!meta) continue;
       const query = meta.query as string | undefined;
-      if (query) {
-        queryCountMap.set(query, (queryCountMap.get(query) || 0) + 1);
-      }
-      if (meta.resultCount === 0 || meta.results === 0) {
-        if (query && !zeroResultQueries.includes(query)) {
-          zeroResultQueries.push(query);
-        }
+      if (!query) continue;
+      queryCountMap.set(query, (queryCountMap.get(query) || 0) + 1);
+      const resultCount = (meta.resultCount ?? meta.results ?? 0) as number;
+      queryResultMap.set(query, resultCount);
+      if (resultCount === 0) {
+        zeroResultMap.set(query, (zeroResultMap.get(query) || 0) + 1);
       }
     }
     const topSearches = [...queryCountMap.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
+      .map(([query, count]) => ({ query, count, results: queryResultMap.get(query) ?? 0 }));
+    const zeroResultSearches = [...zeroResultMap.entries()]
+      .sort((a, b) => b[1] - a[1])
       .map(([query, count]) => ({ query, count }));
 
     // Expiring vendors (paid, expiring within 7 days)
@@ -600,21 +603,23 @@ router.get("/api/briefing", async (_req, res) => {
 
     const result = {
       source: "database",
-      todaySearches: todaySearches ?? 0,
-      todayWhatsappTaps: todayWhatsappTaps ?? 0,
-      todayProductViews: todayProductViews ?? 0,
-      todayNewVendors: todayNewVendors ?? 0,
-      todayPartRequests: todayPartRequests ?? 0,
-      yesterdaySearches: yesterdaySearches ?? 0,
-      yesterdayWhatsappTaps: yesterdayWhatsappTaps ?? 0,
-      yesterdayProductViews: yesterdayProductViews ?? 0,
-      yesterdayNewVendors: yesterdayNewVendors ?? 0,
-      yesterdayPartRequests: yesterdayPartRequests ?? 0,
-      topSearches,
-      zeroResultSearches: zeroResultQueries,
-      expiringVendors,
-      activePaidVendors,
-      mrr,
+      data: {
+        todaySearches: todaySearches ?? 0,
+        todayWhatsappTaps: todayWhatsappTaps ?? 0,
+        todayProductViews: todayProductViews ?? 0,
+        todayNewVendors: todayNewVendors ?? 0,
+        todayPartRequests: todayPartRequests ?? 0,
+        yesterdaySearches: yesterdaySearches ?? 0,
+        yesterdayWhatsappTaps: yesterdayWhatsappTaps ?? 0,
+        yesterdayProductViews: yesterdayProductViews ?? 0,
+        yesterdayNewVendors: yesterdayNewVendors ?? 0,
+        yesterdayPartRequests: yesterdayPartRequests ?? 0,
+        topSearches,
+        zeroResultSearches,
+        expiringVendors,
+        activePaidVendors,
+        mrr,
+      },
     };
     cache.set(CACHE_KEYS.briefing, result, 300);
     res.json(result);
