@@ -749,7 +749,7 @@ router.get("/api/vendors/:id", async (req, res) => {
       return res.status(400).json({ error: "Invalid vendor ID" });
     }
 
-    const { data: vendor, error: vendorError } = await supabase
+    const { data: vendor, error: vendorError } = await supabase!
       .from("vendors")
       .select("*")
       .eq("id", vendorId)
@@ -759,24 +759,27 @@ router.get("/api/vendors/:id", async (req, res) => {
       return res.status(404).json({ error: "Vendor not found" });
     }
 
-    const { count: productCount } = await supabase
+    const { count: productCount } = await supabase!
       .from("products")
       .select("*", { count: "exact", head: true })
       .eq("vendorId", vendorId);
 
-    const { data: orders } = await supabase
+    const { data: orders } = await supabase!
       .from("orders")
       .select("id, totalAmount, commissionAmount")
       .eq("vendorId", vendorId);
 
     const orderCount = orders?.length ?? 0;
-    const totalRevenue = orders?.reduce((sum, o) => sum + (o.totalAmount || 0), 0) ?? 0;
+    const totalRevenue = orders?.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0) ?? 0;
 
     res.json({
-      ...vendor,
-      productCount: productCount ?? 0,
-      orderCount,
-      totalRevenue,
+      source: "database",
+      data: {
+        ...vendor,
+        totalListings: productCount ?? 0,
+        totalOrders: orderCount,
+        totalRevenue,
+      },
     });
   } catch (error) {
     safeLogError("Vendor detail query error", error);
@@ -792,14 +795,14 @@ router.get("/api/vendors/:id/orders", async (req, res) => {
       return res.status(400).json({ error: "Invalid vendor ID" });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabase!
       .from("orders")
       .select("id, orderNumber, totalAmount, commissionAmount, currency, status, paymentMethod, paymentStatus, buyerName, buyerPhone, createdAt")
       .eq("vendorId", vendorId)
       .order("createdAt", { ascending: false });
 
     if (error) throw error;
-    res.json(data ?? []);
+    res.json({ source: "database", data: data ?? [] });
   } catch (error) {
     safeLogError("Vendor orders query error", error);
     res.status(500).json({ error: "Database query failed" });
@@ -814,14 +817,14 @@ router.get("/api/vendors/:id/payouts", async (req, res) => {
       return res.status(400).json({ error: "Invalid vendor ID" });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabase!
       .from("vendor_payouts")
       .select("*")
       .eq("vendorId", vendorId)
       .order("createdAt", { ascending: false });
 
     if (error) throw error;
-    res.json(data ?? []);
+    res.json({ source: "database", data: data ?? [] });
   } catch (error) {
     safeLogError("Vendor payouts query error", error);
     res.status(500).json({ error: "Database query failed" });
@@ -836,7 +839,7 @@ router.get("/api/vendors/:id/notifications", async (req, res) => {
       return res.status(400).json({ error: "Invalid vendor ID" });
     }
 
-    const { data: vendor, error: vendorError } = await supabase
+    const { data: vendor, error: vendorError } = await supabase!
       .from("vendors")
       .select("userId")
       .eq("id", vendorId)
@@ -846,14 +849,14 @@ router.get("/api/vendors/:id/notifications", async (req, res) => {
       return res.status(404).json({ error: "Vendor not found" });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabase!
       .from("notifications")
       .select("*")
       .eq("userId", vendor.userId)
       .order("createdAt", { ascending: false });
 
     if (error) throw error;
-    res.json(data ?? []);
+    res.json({ source: "database", data: data ?? [] });
   } catch (error) {
     safeLogError("Vendor notifications query error", error);
     res.status(500).json({ error: "Database query failed" });
@@ -868,14 +871,14 @@ router.get("/api/vendors/:id/subscription-events", async (req, res) => {
       return res.status(400).json({ error: "Invalid vendor ID" });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabase!
       .from("subscription_events")
       .select("*")
       .eq("vendorId", vendorId)
       .order("createdAt", { ascending: false });
 
     if (error) throw error;
-    res.json(data ?? []);
+    res.json({ source: "database", data: data ?? [] });
   } catch (error) {
     safeLogError("Vendor subscription events query error", error);
     res.status(500).json({ error: "Database query failed" });
@@ -896,7 +899,7 @@ router.patch("/api/vendors/:id/status", async (req, res) => {
       return res.status(400).json({ error: "Invalid status. Must be one of: " + validStatuses.join(", ") });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabase!
       .from("vendors")
       .update({ status, updatedAt: new Date().toISOString() })
       .eq("id", vendorId)
@@ -940,7 +943,7 @@ router.patch("/api/vendors/:id/tier", async (req, res) => {
       updateFields.tierExpiresAt = tierExpiresAt;
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabase!
       .from("vendors")
       .update(updateFields)
       .eq("id", vendorId)
@@ -986,7 +989,7 @@ router.patch("/api/vendors/:id/featured", async (req, res) => {
       updateFields.featuredCategoryId = featuredCategoryId;
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabase!
       .from("vendors")
       .update(updateFields)
       .eq("id", vendorId)
@@ -1016,7 +1019,7 @@ router.post("/api/vendors/:id/notifications", async (req, res) => {
       return res.status(400).json({ error: "Invalid vendor ID" });
     }
 
-    const { data: vendor, error: vendorError } = await supabase
+    const { data: vendor, error: vendorError } = await supabase!
       .from("vendors")
       .select("userId")
       .eq("id", vendorId)
@@ -1040,7 +1043,7 @@ router.post("/api/vendors/:id/notifications", async (req, res) => {
       insertFields.type = type;
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabase!
       .from("notifications")
       .insert(insertFields)
       .select()

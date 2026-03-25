@@ -5,6 +5,7 @@
 
 import { useState, useMemo } from 'react';
 import type { Vendor } from '../../lib/voomApi';
+import { VendorDetailDrawer } from '../VendorDetailDrawer';
 
 interface VendorsProps {
   vendors: Vendor[];
@@ -20,6 +21,8 @@ const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }
 export function Vendors({ vendors }: VendorsProps) {
   const [filter, setFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
+  const [selectedVendorId, setSelectedVendorId] = useState<number | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const filtered = useMemo(() => vendors.filter(v => {
     const matchStatus = filter === 'all' || v.status === filter;
@@ -135,6 +138,7 @@ export function Vendors({ vendors }: VendorsProps) {
               <div
                 key={vendor.id}
                 className="vendor-row"
+                onClick={() => { setSelectedVendorId(vendor.id); setDrawerOpen(true); }}
                 style={{
                   padding: '0.75rem 1rem',
                   borderBottom: i < filtered.length - 1 ? '1px solid rgba(79,70,229,0.04)' : 'none',
@@ -210,6 +214,12 @@ export function Vendors({ vendors }: VendorsProps) {
       <p style={{ fontSize: '0.75rem', color: '#94A3B8', textAlign: 'center' }}>
         Showing {filtered.length} of {vendors.length} vendors · Connect VOOM backend for live data
       </p>
+
+      <VendorDetailDrawer
+        vendorId={selectedVendorId}
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+      />
     </div>
   );
 }
