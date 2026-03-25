@@ -5,7 +5,7 @@
  */
 
 import { useMemo } from 'react';
-import type { DashboardKPIs, Vendor } from '../../lib/voomApi';
+import type { DashboardKPIs, Vendor, BriefingData } from '../../lib/voomApi';
 
 // ─── Tier pricing (GH₵/month) ───
 const TIER_PRICES: Record<string, number> = {
@@ -25,25 +25,6 @@ const TIER_COLORS: Record<string, string> = {
   business: '#4F46E5',
   enterprise: '#059669',
 };
-
-// ─── Data shape for the briefing ───
-export interface BriefingData {
-  todaySearches: number;
-  yesterdaySearches: number;
-  todayWhatsappTaps: number;
-  yesterdayWhatsappTaps: number;
-  todayProductViews: number;
-  yesterdayProductViews: number;
-  todayNewVendors: number;
-  yesterdayNewVendors: number;
-  todayPartRequests: number;
-  yesterdayPartRequests: number;
-  topSearches: { query: string; count: number; results: number }[];
-  zeroResultSearches: { query: string; count: number }[];
-  expiringVendors: { id: number; businessName: string; tier: string; tierExpiresAt: string }[];
-  activePaidVendors: number;
-  mrr: number;
-}
 
 interface MorningBriefingProps {
   briefingData: BriefingData;
@@ -174,13 +155,13 @@ export function MorningBriefing({ briefingData, vendors, kpis }: MorningBriefing
   }, [sortedExpiring, zeroResultSearches]);
 
   // Comparison rows
-  const comparisonRows = [
+  const comparisonRows = useMemo(() => [
     { label: 'Searches', today: todaySearches, yesterday: yesterdaySearches },
     { label: 'Product Views', today: todayProductViews, yesterday: yesterdayProductViews },
     { label: 'WhatsApp Taps', today: todayWhatsappTaps, yesterday: yesterdayWhatsappTaps },
     { label: 'New Vendors', today: todayNewVendors, yesterday: yesterdayNewVendors },
     { label: 'Part Requests', today: todayPartRequests, yesterday: yesterdayPartRequests },
-  ];
+  ], [todaySearches, yesterdaySearches, todayProductViews, yesterdayProductViews, todayWhatsappTaps, yesterdayWhatsappTaps, todayNewVendors, yesterdayNewVendors, todayPartRequests, yesterdayPartRequests]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -188,7 +169,7 @@ export function MorningBriefing({ briefingData, vendors, kpis }: MorningBriefing
       {/* ═══════════════════════════════════════════════════════
           1. PULSE BAR — sticky top within the section
          ═══════════════════════════════════════════════════════ */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 20 }}>
+      <div style={{ position: 'sticky', top: 56, zIndex: 20 }}>
         <div className="glass-card" style={{
           padding: '0.75rem 1rem',
           display: 'flex',

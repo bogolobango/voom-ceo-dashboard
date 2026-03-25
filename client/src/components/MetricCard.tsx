@@ -117,7 +117,7 @@ export function MetricCard({
     <div
       ref={ref}
       onClick={onClick}
-      className="glass-card p-5 relative overflow-hidden"
+      className="glass-card glass-card-padded relative overflow-hidden"
       style={{
         opacity: visible ? 1 : 0,
         transform: visible ? 'translateY(0)' : 'translateY(16px)',

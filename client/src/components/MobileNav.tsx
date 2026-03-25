@@ -176,6 +176,9 @@ export function MobileNav({ activeSection, onNavigate }: MobileNavProps) {
 
       {/* More slide-up sheet */}
       <div
+        role="dialog"
+        aria-modal={moreOpen}
+        aria-label="More sections"
         style={{
           position: 'fixed',
           left: 0,

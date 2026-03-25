@@ -162,6 +162,7 @@ export function Sidebar({ activeSection, onNavigate, liveStatus }: SidebarProps)
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           style={{
             width: 28, height: 28, borderRadius: '0.5rem',
             background: 'rgba(79,70,229,0.08)',
@@ -190,8 +191,8 @@ export function Sidebar({ activeSection, onNavigate, liveStatus }: SidebarProps)
           display: 'flex', alignItems: 'center', gap: '0.5rem',
         }}>
           <div className={`status-orb ${liveStatus}`} />
-          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: liveStatus === 'live' ? '#059669' : '#D97706' }}>
-            {liveStatus === 'live' ? 'Live Data' : 'Demo Mode'}
+          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: liveStatus === 'live' ? '#059669' : liveStatus === 'error' ? '#EF4444' : '#D97706' }}>
+            {liveStatus === 'live' ? 'Live Data' : liveStatus === 'error' ? 'DB Error' : 'Demo Mode'}
           </span>
         </div>
       )}
@@ -213,6 +214,7 @@ export function Sidebar({ activeSection, onNavigate, liveStatus }: SidebarProps)
             key={item.id}
             onClick={() => onNavigate(item.id)}
             className={`nav-item ${activeSection === item.id ? 'active' : ''}`}
+            aria-current={activeSection === item.id ? 'page' : undefined}
             style={{
               width: '100%',
               justifyContent: collapsed ? 'center' : 'flex-start',

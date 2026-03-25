@@ -4,7 +4,7 @@
  * Uses React Query for data fetching with per-widget error boundaries
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Sidebar } from '../components/Sidebar';
 import { MobileNav } from '../components/MobileNav';
@@ -46,7 +46,9 @@ const SECTION_LABELS: Record<Section, string> = {
 };
 
 function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false
+  );
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handler);
@@ -106,18 +108,19 @@ export default function Home() {
     return latest ? new Date(latest) : new Date();
   }, [statsQuery.dataUpdatedAt, vendorsQuery.dataUpdatedAt, ordersQuery.dataUpdatedAt]);
 
-  // Show toast on first successful or failed connection
+  // Show toast once on first successful fetch if offline
+  const hasShownToast = useRef(false);
   useEffect(() => {
-    if (statsQuery.isSuccess && dataSource === 'database') {
-      // silently connected
-    } else if (statsQuery.isSuccess && dataSource === 'offline') {
+    if (hasShownToast.current) return;
+    if (statsQuery.isSuccess && dataSource === 'offline') {
       toast.error('Not connected to database. Set DATABASE_URL and restart server.');
+      hasShownToast.current = true;
     }
   }, [statsQuery.isSuccess, dataSource]);
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     queryClient.invalidateQueries();
-  };
+  }, [queryClient]);
 
   const handleNavigate = (section: string) => {
     if (section === 'settings') {
@@ -125,7 +128,9 @@ export default function Home() {
       setSidebarOpen(false);
       return;
     }
-    setActiveSection(section as Section);
+    if (section in SECTION_LABELS) {
+      setActiveSection(section as Section);
+    }
     setSidebarOpen(false);
   };
 
@@ -142,10 +147,19 @@ export default function Home() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [handleRefresh]);
 
   const renderSection = () => {
-    if (!kpis) return null;
+    if (!kpis) return (
+      <div style={{ textAlign: 'center', padding: '4rem 1rem' }}>
+        <p style={{ fontFamily: 'Plus Jakarta Sans', fontWeight: 600, color: '#0F172A', marginBottom: '0.25rem' }}>
+          No data available
+        </p>
+        <p style={{ fontSize: '0.8125rem', color: '#94A3B8' }}>
+          Connect a database or check your backend configuration.
+        </p>
+      </div>
+    );
     switch (activeSection) {
       case 'briefing': return (
         <WidgetErrorBoundary fallbackTitle="Briefing failed to load">
@@ -194,7 +208,7 @@ export default function Home() {
       );
       case 'security': return (
         <WidgetErrorBoundary fallbackTitle="Security failed to load">
-          <Security kpis={kpis} />
+          <Security kpis={kpis} dataSource={dataSource} />
         </WidgetErrorBoundary>
       );
       case 'competitive': return (
@@ -279,6 +293,7 @@ export default function Home() {
             {isMobile && (
               <button
                 onClick={() => setSidebarOpen(true)}
+                aria-label="Open navigation menu"
                 style={{
                   width: 36, height: 36, borderRadius: '0.625rem',
                   background: 'rgba(79,70,229,0.08)', border: 'none',
@@ -338,6 +353,7 @@ export default function Home() {
             )}
             <button
               onClick={handleRefresh}
+              aria-label="Refresh data"
               style={{
                 width: 34, height: 34, borderRadius: '0.5rem',
                 background: 'rgba(79,70,229,0.08)', border: 'none',

@@ -59,7 +59,7 @@ async function startServer() {
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
         imgSrc: ["'self'", "data:", "https:"],
-        connectSrc: ["'self'"],
+        connectSrc: ["'self'", "https://*.supabase.co", "wss://*.supabase.co"],
       },
     },
     crossOriginEmbedderPolicy: false,
@@ -73,7 +73,7 @@ async function startServer() {
   app.use(cors({
     origin: allowedOrigins || (process.env.NODE_ENV === "production" ? false : true),
     credentials: true,
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "PATCH"],
     maxAge: 86400,
   }));
 
@@ -113,12 +113,14 @@ async function startServer() {
     // In development, allow all requests
     if (process.env.NODE_ENV !== "production") return next();
 
-    // In production, require API key if one is configured
-    if (apiKey) {
-      const provided = req.headers["x-api-key"] || req.query.apiKey;
-      if (provided !== apiKey) {
-        return res.status(401).json({ error: "Unauthorized. Provide a valid API key." });
-      }
+    // In production, require API key
+    if (!apiKey) {
+      return res.status(500).json({ error: "Server misconfigured: DASHBOARD_API_KEY is required in production." });
+    }
+
+    const provided = req.headers["x-api-key"];
+    if (provided !== apiKey) {
+      return res.status(401).json({ error: "Unauthorized. Provide a valid X-API-Key header." });
     }
 
     next();
