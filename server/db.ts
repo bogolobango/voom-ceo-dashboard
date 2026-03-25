@@ -1,6 +1,11 @@
+import dns from "dns";
 import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "../shared/schema.js";
+
+// Force IPv4 DNS resolution to avoid IPv6 connectivity issues
+// in environments like v0/Vercel sandboxes that don't support IPv6
+dns.setDefaultResultOrder("ipv4first");
 
 const { Pool } = pg;
 
