@@ -1,40 +1,80 @@
 import { Router } from "express";
-import { db } from "./db.js";
+import NodeCache from "node-cache";
+import { db, isPoolHealthy, checkPoolHealth } from "./db.js";
+import { safeLogError } from "./index.js";
 import {
-  users, vendors, products, orders, orderItems, categories,
-  reviews, partRequests, analyticsEvents, vendorPayouts,
-  subscriptionEvents,
+  users, vendors, products, orders, categories, partRequests,
 } from "../shared/schema.js";
-import { eq, sql, count, sum, avg, desc } from "drizzle-orm";
+import { eq, sql, count, sum, desc, and, gte } from "drizzle-orm";
 
 const router = Router();
 
-// ─── Dashboard Stats ───────────────────────────────────────
+// ─── Query Cache (TTL in seconds) ─────────────────────────
+
+const cache = new NodeCache({ stdTTL: 300, checkperiod: 60 });
+
+const CACHE_KEYS = {
+  stats: "api:stats",
+  revenue: "api:revenue",
+  growth: "api:growth",
+  categories: "api:categories",
+};
+
+// ─── Helpers ───────────────────────────────────────────────
+
+const MAX_PAGE_SIZE = 200;
+const DEFAULT_PAGE_SIZE = 100;
+
+function parsePagination(query: Record<string, any>) {
+  const limit = Math.min(
+    Math.max(1, parseInt(query.limit, 10) || DEFAULT_PAGE_SIZE),
+    MAX_PAGE_SIZE,
+  );
+  const offset = Math.max(0, parseInt(query.offset, 10) || 0);
+  return { limit, offset };
+}
+
+function dbUnavailable(res: any): boolean {
+  if (!db) {
+    res.json({ source: "offline" });
+    return true;
+  }
+  if (!isPoolHealthy()) {
+    res.status(503).json({ error: "Database temporarily unavailable. Retrying..." });
+    return true;
+  }
+  return false;
+}
+
+// ─── Dashboard Stats (cached) ──────────────────────────────
 
 router.get("/api/stats", async (_req, res) => {
-  if (!db) return res.json({ source: "offline" });
-  try {
-    const [userCount] = await db.select({ count: count() }).from(users);
-    const [vendorCount] = await db.select({ count: count() }).from(vendors);
-    const [productCount] = await db.select({ count: count() }).from(products);
-    const [orderCount] = await db.select({ count: count() }).from(orders);
-    const [categoryCount] = await db.select({ count: count() }).from(categories);
-    const [partRequestCount] = await db.select({ count: count() }).from(partRequests);
+  if (dbUnavailable(res)) return;
+  const cached = cache.get(CACHE_KEYS.stats);
+  if (cached) return res.json(cached);
 
-    const [pendingVendors] = await db
+  try {
+    const [userCount] = await db!.select({ count: count() }).from(users);
+    const [vendorCount] = await db!.select({ count: count() }).from(vendors);
+    const [productCount] = await db!.select({ count: count() }).from(products);
+    const [orderCount] = await db!.select({ count: count() }).from(orders);
+    const [categoryCount] = await db!.select({ count: count() }).from(categories);
+    const [partRequestCount] = await db!.select({ count: count() }).from(partRequests);
+
+    const [pendingVendors] = await db!
       .select({ count: count() })
       .from(vendors)
       .where(eq(vendors.status, "pending"));
 
-    const [revenueResult] = await db
+    const [revenueResult] = await db!
       .select({ total: sum(orders.totalAmount) })
       .from(orders);
 
-    const [commissionResult] = await db
+    const [commissionResult] = await db!
       .select({ total: sum(orders.commissionAmount) })
       .from(orders);
 
-    res.json({
+    const result = {
       source: "database",
       totalUsers: userCount.count,
       totalVendors: vendorCount.count,
@@ -45,19 +85,23 @@ router.get("/api/stats", async (_req, res) => {
       pendingVendors: pendingVendors.count,
       totalRevenue: String(revenueResult.total || 0),
       totalCommission: String(commissionResult.total || 0),
-    });
+    };
+    cache.set(CACHE_KEYS.stats, result);
+    res.json(result);
   } catch (error) {
-    console.error("Stats query error:", error);
+    safeLogError("Stats query error", error);
     res.status(500).json({ error: "Database query failed" });
   }
 });
 
-// ─── Vendors ───────────────────────────────────────────────
+// ─── Vendors (paginated, JOIN for stats) ───────────────────
 
-router.get("/api/vendors", async (_req, res) => {
-  if (!db) return res.json({ source: "offline", data: [] });
+router.get("/api/vendors", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  const { limit, offset } = parsePagination(req.query);
+
   try {
-    const allVendors = await db
+    const allVendors = await db!
       .select({
         id: vendors.id,
         businessName: vendors.businessName,
@@ -74,27 +118,37 @@ router.get("/api/vendors", async (_req, res) => {
         createdAt: vendors.createdAt,
       })
       .from(vendors)
-      .orderBy(desc(vendors.createdAt));
+      .orderBy(desc(vendors.createdAt))
+      .limit(limit)
+      .offset(offset);
 
-    // Batch: product counts per vendor
-    const productCounts = await db
-      .select({ vendorId: products.vendorId, count: count() })
-      .from(products)
-      .groupBy(products.vendorId);
-    const productMap = new Map(productCounts.map(p => [p.vendorId, p.count]));
+    // Batch stats only for the page of vendors we fetched
+    const vendorIds = allVendors.map(v => v.id);
 
-    // Batch: order revenue per vendor
-    const orderStats = await db
-      .select({
-        vendorId: orders.vendorId,
-        count: count(),
-        revenue: sum(orders.totalAmount),
-      })
-      .from(orders)
-      .groupBy(orders.vendorId);
-    const orderMap = new Map(
-      orderStats.map(o => [o.vendorId, { count: o.count, revenue: o.revenue }])
-    );
+    let productMap = new Map<number, number>();
+    let orderMap = new Map<number, { count: number; revenue: string | null }>();
+
+    if (vendorIds.length > 0) {
+      const productCounts = await db!
+        .select({ vendorId: products.vendorId, count: count() })
+        .from(products)
+        .where(sql`${products.vendorId} IN (${sql.join(vendorIds.map(id => sql`${id}`), sql`, `)})`)
+        .groupBy(products.vendorId);
+      productMap = new Map(productCounts.map(p => [p.vendorId, p.count]));
+
+      const orderStats = await db!
+        .select({
+          vendorId: orders.vendorId,
+          count: count(),
+          revenue: sum(orders.totalAmount),
+        })
+        .from(orders)
+        .where(sql`${orders.vendorId} IN (${sql.join(vendorIds.map(id => sql`${id}`), sql`, `)})`)
+        .groupBy(orders.vendorId);
+      orderMap = new Map(
+        orderStats.map(o => [o.vendorId, { count: o.count, revenue: o.revenue }])
+      );
+    }
 
     const vendorData = allVendors.map(v => {
       const oStats = orderMap.get(v.id);
@@ -117,19 +171,21 @@ router.get("/api/vendors", async (_req, res) => {
       };
     });
 
-    res.json({ source: "database", data: vendorData });
+    res.json({ source: "database", data: vendorData, pagination: { limit, offset } });
   } catch (error) {
-    console.error("Vendors query error:", error);
+    safeLogError("Vendors query error", error);
     res.status(500).json({ error: "Database query failed" });
   }
 });
 
-// ─── Orders ────────────────────────────────────────────────
+// ─── Orders (paginated, JOIN for vendor name) ──────────────
 
-router.get("/api/orders", async (_req, res) => {
-  if (!db) return res.json({ source: "offline", data: [] });
+router.get("/api/orders", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  const { limit, offset } = parsePagination(req.query);
+
   try {
-    const rows = await db
+    const rows = await db!
       .select({
         id: orders.id,
         orderNumber: orders.orderNumber,
@@ -143,20 +199,14 @@ router.get("/api/orders", async (_req, res) => {
         shippingRegion: orders.shippingRegion,
         buyerName: orders.buyerName,
         buyerPhone: orders.buyerPhone,
-        vendorId: orders.vendorId,
+        vendorName: vendors.businessName,
         createdAt: orders.createdAt,
       })
       .from(orders)
-      .orderBy(desc(orders.createdAt));
-
-    // Batch: get vendor names for orders
-    const vendorIds = Array.from(new Set(rows.map(r => r.vendorId)));
-    const vendorNames = vendorIds.length > 0
-      ? await db
-          .select({ id: vendors.id, businessName: vendors.businessName })
-          .from(vendors)
-      : [];
-    const vendorNameMap = new Map(vendorNames.map(v => [v.id, v.businessName]));
+      .leftJoin(vendors, eq(orders.vendorId, vendors.id))
+      .orderBy(desc(orders.createdAt))
+      .limit(limit)
+      .offset(offset);
 
     const orderData = rows.map(o => ({
       id: o.id,
@@ -171,23 +221,25 @@ router.get("/api/orders", async (_req, res) => {
       shippingRegion: o.shippingRegion,
       buyerName: o.buyerName,
       buyerPhone: o.buyerPhone,
-      vendorName: vendorNameMap.get(o.vendorId) || null,
+      vendorName: o.vendorName || null,
       createdAt: o.createdAt.toISOString(),
     }));
 
-    res.json({ source: "database", data: orderData });
+    res.json({ source: "database", data: orderData, pagination: { limit, offset } });
   } catch (error) {
-    console.error("Orders query error:", error);
+    safeLogError("Orders query error", error);
     res.status(500).json({ error: "Database query failed" });
   }
 });
 
-// ─── Products ──────────────────────────────────────────────
+// ─── Products (paginated, JOIN for category name) ──────────
 
-router.get("/api/products", async (_req, res) => {
-  if (!db) return res.json({ source: "offline", data: [] });
+router.get("/api/products", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  const { limit, offset } = parsePagination(req.query);
+
   try {
-    const allProducts = await db
+    const allProducts = await db!
       .select({
         id: products.id,
         name: products.name,
@@ -201,18 +253,15 @@ router.get("/api/products", async (_req, res) => {
         status: products.status,
         views: products.views,
         whatsappTaps: products.whatsappTaps,
-        categoryId: products.categoryId,
+        categoryName: categories.name,
         vendorId: products.vendorId,
         createdAt: products.createdAt,
       })
       .from(products)
-      .orderBy(desc(products.createdAt));
-
-    // Get all categories for lookup
-    const allCategories = await db
-      .select({ id: categories.id, name: categories.name })
-      .from(categories);
-    const categoryMap = new Map(allCategories.map(c => [c.id, c.name]));
+      .leftJoin(categories, eq(products.categoryId, categories.id))
+      .orderBy(desc(products.createdAt))
+      .limit(limit)
+      .offset(offset);
 
     const productData = allProducts.map(p => ({
       id: p.id,
@@ -227,30 +276,32 @@ router.get("/api/products", async (_req, res) => {
       status: p.status,
       views: p.views,
       whatsappTaps: p.whatsappTaps,
-      categoryName: p.categoryId ? categoryMap.get(p.categoryId) || null : null,
+      categoryName: p.categoryName || null,
       vendorId: p.vendorId,
       createdAt: p.createdAt.toISOString(),
     }));
 
-    res.json({ source: "database", data: productData });
+    res.json({ source: "database", data: productData, pagination: { limit, offset } });
   } catch (error) {
-    console.error("Products query error:", error);
+    safeLogError("Products query error", error);
     res.status(500).json({ error: "Database query failed" });
   }
 });
 
-// ─── Categories ────────────────────────────────────────────
+// ─── Categories (cached, small table) ──────────────────────
 
 router.get("/api/categories", async (_req, res) => {
-  if (!db) return res.json({ source: "offline", data: [] });
+  if (dbUnavailable(res)) return;
+  const cached = cache.get(CACHE_KEYS.categories);
+  if (cached) return res.json(cached);
+
   try {
-    const allCategories = await db
+    const allCategories = await db!
       .select()
       .from(categories)
       .orderBy(categories.name);
 
-    // Count products per category
-    const prodCounts = await db
+    const prodCounts = await db!
       .select({ categoryId: products.categoryId, count: count() })
       .from(products)
       .groupBy(products.categoryId);
@@ -265,22 +316,40 @@ router.get("/api/categories", async (_req, res) => {
       productCount: countMap.get(c.id) || 0,
     }));
 
-    res.json({ source: "database", data });
+    const result = { source: "database", data };
+    cache.set(CACHE_KEYS.categories, result);
+    res.json(result);
   } catch (error) {
-    console.error("Categories query error:", error);
+    safeLogError("Categories query error", error);
     res.status(500).json({ error: "Database query failed" });
   }
 });
 
-// ─── Part Requests ─────────────────────────────────────────
+// ─── Part Requests (paginated) ─────────────────────────────
 
-router.get("/api/part-requests", async (_req, res) => {
-  if (!db) return res.json({ source: "offline", data: [] });
+router.get("/api/part-requests", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  const { limit, offset } = parsePagination(req.query);
+
   try {
-    const allRequests = await db
-      .select()
+    const allRequests = await db!
+      .select({
+        id: partRequests.id,
+        guestName: partRequests.guestName,
+        contactPhone: partRequests.contactPhone,
+        make: partRequests.make,
+        model: partRequests.model,
+        year: partRequests.year,
+        partName: partRequests.partName,
+        description: partRequests.description,
+        budget: partRequests.budget,
+        status: partRequests.status,
+        createdAt: partRequests.createdAt,
+      })
       .from(partRequests)
-      .orderBy(desc(partRequests.createdAt));
+      .orderBy(desc(partRequests.createdAt))
+      .limit(limit)
+      .offset(offset);
 
     const data = allRequests.map(r => ({
       id: r.id,
@@ -296,27 +365,30 @@ router.get("/api/part-requests", async (_req, res) => {
       createdAt: r.createdAt.toISOString(),
     }));
 
-    res.json({ source: "database", data });
+    res.json({ source: "database", data, pagination: { limit, offset } });
   } catch (error) {
-    console.error("Part requests query error:", error);
+    safeLogError("Part requests query error", error);
     res.status(500).json({ error: "Database query failed" });
   }
 });
 
-// ─── Revenue Analytics ─────────────────────────────────────
+// ─── Revenue Analytics (cached) ────────────────────────────
 
 router.get("/api/revenue", async (_req, res) => {
-  if (!db) return res.json({ source: "offline", data: {} });
+  if (dbUnavailable(res)) return;
+  const cached = cache.get(CACHE_KEYS.revenue);
+  if (cached) return res.json(cached);
+
   try {
-    const [total] = await db
+    const [total] = await db!
       .select({ total: sum(orders.totalAmount) })
       .from(orders);
 
-    const [commission] = await db
+    const [commission] = await db!
       .select({ total: sum(orders.commissionAmount) })
       .from(orders);
 
-    const byStatus = await db
+    const byStatus = await db!
       .select({
         status: orders.status,
         total: sum(orders.totalAmount),
@@ -325,7 +397,7 @@ router.get("/api/revenue", async (_req, res) => {
       .from(orders)
       .groupBy(orders.status);
 
-    const byPaymentMethod = await db
+    const byPaymentMethod = await db!
       .select({
         method: orders.paymentMethod,
         total: sum(orders.totalAmount),
@@ -334,7 +406,7 @@ router.get("/api/revenue", async (_req, res) => {
       .from(orders)
       .groupBy(orders.paymentMethod);
 
-    const byRegion = await db
+    const byRegion = await db!
       .select({
         region: orders.shippingRegion,
         total: sum(orders.totalAmount),
@@ -342,9 +414,10 @@ router.get("/api/revenue", async (_req, res) => {
       })
       .from(orders)
       .groupBy(orders.shippingRegion)
-      .orderBy(desc(sum(orders.totalAmount)));
+      .orderBy(desc(sum(orders.totalAmount)))
+      .limit(10);
 
-    const dailyRevenue = await db
+    const dailyRevenue = await db!
       .select({
         date: sql<string>`DATE(${orders.createdAt})`,
         revenue: sum(orders.totalAmount),
@@ -356,7 +429,7 @@ router.get("/api/revenue", async (_req, res) => {
       .groupBy(sql`DATE(${orders.createdAt})`)
       .orderBy(sql`DATE(${orders.createdAt})`);
 
-    res.json({
+    const result = {
       source: "database",
       data: {
         totalRevenue: Number(total.total || 0),
@@ -379,20 +452,24 @@ router.get("/api/revenue", async (_req, res) => {
           orders: d.orders,
         })),
       },
-    });
+    };
+    cache.set(CACHE_KEYS.revenue, result, 600); // 10 min cache for heavy query
+    res.json(result);
   } catch (error) {
-    console.error("Revenue query error:", error);
+    safeLogError("Revenue query error", error);
     res.status(500).json({ error: "Database query failed" });
   }
 });
 
-// ─── Growth Analytics ──────────────────────────────────────
+// ─── Growth Analytics (cached) ─────────────────────────────
 
 router.get("/api/growth", async (_req, res) => {
-  if (!db) return res.json({ source: "offline", data: {} });
+  if (dbUnavailable(res)) return;
+  const cached = cache.get(CACHE_KEYS.growth);
+  if (cached) return res.json(cached);
+
   try {
-    // Monthly vendor growth
-    const vendorGrowth = await db
+    const vendorGrowth = await db!
       .select({
         month: sql<string>`TO_CHAR(${vendors.createdAt}, 'YYYY-MM')`,
         count: count(),
@@ -401,8 +478,7 @@ router.get("/api/growth", async (_req, res) => {
       .groupBy(sql`TO_CHAR(${vendors.createdAt}, 'YYYY-MM')`)
       .orderBy(sql`TO_CHAR(${vendors.createdAt}, 'YYYY-MM')`);
 
-    // Monthly order growth
-    const orderGrowth = await db
+    const orderGrowth = await db!
       .select({
         month: sql<string>`TO_CHAR(${orders.createdAt}, 'YYYY-MM')`,
         count: count(),
@@ -412,8 +488,7 @@ router.get("/api/growth", async (_req, res) => {
       .groupBy(sql`TO_CHAR(${orders.createdAt}, 'YYYY-MM')`)
       .orderBy(sql`TO_CHAR(${orders.createdAt}, 'YYYY-MM')`);
 
-    // Monthly product growth
-    const productGrowth = await db
+    const productGrowth = await db!
       .select({
         month: sql<string>`TO_CHAR(${products.createdAt}, 'YYYY-MM')`,
         count: count(),
@@ -422,13 +497,12 @@ router.get("/api/growth", async (_req, res) => {
       .groupBy(sql`TO_CHAR(${products.createdAt}, 'YYYY-MM')`)
       .orderBy(sql`TO_CHAR(${products.createdAt}, 'YYYY-MM')`);
 
-    // Vendor tier distribution
-    const tierDist = await db
+    const tierDist = await db!
       .select({ tier: vendors.tier, count: count() })
       .from(vendors)
       .groupBy(vendors.tier);
 
-    res.json({
+    const result = {
       source: "database",
       data: {
         vendorGrowth: vendorGrowth.map(v => ({ month: v.month, count: v.count })),
@@ -440,9 +514,11 @@ router.get("/api/growth", async (_req, res) => {
         productGrowth: productGrowth.map(p => ({ month: p.month, count: p.count })),
         tierDistribution: tierDist.map(t => ({ tier: t.tier, count: t.count })),
       },
-    });
+    };
+    cache.set(CACHE_KEYS.growth, result, 900); // 15 min cache
+    res.json(result);
   } catch (error) {
-    console.error("Growth query error:", error);
+    safeLogError("Growth query error", error);
     res.status(500).json({ error: "Database query failed" });
   }
 });
@@ -458,12 +534,17 @@ router.get("/api/health", async (_req, res) => {
     });
   }
   try {
+    const healthy = await checkPoolHealth();
+    if (!healthy) {
+      return res.json({ status: "ok", database: "unhealthy", message: "Pool connections exhausted" });
+    }
     const result = await db.execute(sql`SELECT NOW() as now, current_database() as db_name`);
     res.json({
       status: "ok",
       database: "connected",
       serverTime: (result as any).rows?.[0]?.now,
       dbName: (result as any).rows?.[0]?.db_name,
+      cacheKeys: cache.keys().length,
     });
   } catch (error: any) {
     res.json({ status: "ok", database: "error", error: error.message });

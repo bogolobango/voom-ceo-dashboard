@@ -4,7 +4,6 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "../shared/schema.js";
 
 // Force IPv4 DNS resolution to avoid IPv6 connectivity issues
-// in environments like v0/Vercel sandboxes that don't support IPv6
 dns.setDefaultResultOrder("ipv4first");
 
 const { Pool } = pg;
@@ -15,13 +14,25 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
+// Determine SSL config based on environment
+// In production (Render), use proper SSL validation.
+// rejectUnauthorized: false is only acceptable for local dev or when CA certs aren't available.
+const isProduction = process.env.NODE_ENV === "production";
+const sslConfig = process.env.DATABASE_URL
+  ? {
+      ssl: isProduction
+        ? { rejectUnauthorized: true }
+        : { rejectUnauthorized: false },
+    }
+  : {};
+
 const poolConfig = process.env.DATABASE_URL
   ? {
       connectionString: process.env.DATABASE_URL,
-      max: 10,
+      max: 20,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000,
-      ssl: { rejectUnauthorized: false },
+      ...sslConfig,
     }
   : undefined;
 
@@ -30,9 +41,36 @@ export const db = pool ? drizzle(pool, { schema }) : null;
 
 if (pool) {
   pool.on("error", (err: Error) => {
-    console.error("Unexpected database pool error:", err);
+    console.error("Unexpected database pool error:", err.message);
   });
 }
+
+// ─── Pool Health Check (Circuit Breaker) ───────────────────
+
+let _poolHealthy = true;
+let _lastHealthCheck = 0;
+const HEALTH_CHECK_INTERVAL = 30000; // 30 seconds
+
+export function isPoolHealthy(): boolean {
+  return _poolHealthy;
+}
+
+export async function checkPoolHealth(): Promise<boolean> {
+  if (!pool) return false;
+  const now = Date.now();
+  if (now - _lastHealthCheck < HEALTH_CHECK_INTERVAL) return _poolHealthy;
+  _lastHealthCheck = now;
+  try {
+    const client = await pool.connect();
+    client.release();
+    _poolHealthy = true;
+  } catch {
+    _poolHealthy = false;
+  }
+  return _poolHealthy;
+}
+
+// ─── Graceful Shutdown ─────────────────────────────────────
 
 export async function closeDatabase() {
   if (!pool) return;

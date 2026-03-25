@@ -1,13 +1,14 @@
 /**
  * VOOM Ghana CEO Dashboard — Home Page
  * Arctic Glass Design System · Mobile-first responsive
- * Mobile: bottom tab bar + stacked layout
- * Desktop: fixed left sidebar + multi-column grid
+ * Uses React Query for data fetching with per-widget error boundaries
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Sidebar } from '../components/Sidebar';
 import { MobileNav } from '../components/MobileNav';
+import { WidgetErrorBoundary } from '../components/WidgetErrorBoundary';
 import { Overview } from '../components/sections/Overview';
 import { Vendors } from '../components/sections/Vendors';
 import { Products } from '../components/sections/Products';
@@ -19,8 +20,7 @@ import {
   fetchStats, fetchVendors, fetchOrders, fetchProducts,
   fetchPartRequests, fetchRevenue, fetchGrowth,
   computeKPIs, getDataSource,
-  type Vendor, type Order, type Product, type PartRequest,
-  type DashboardKPIs, type DataSource, type RevenueData, type GrowthData,
+  type DataSource,
 } from '../lib/voomApi';
 import { toast } from 'sonner';
 
@@ -49,59 +49,57 @@ function useIsMobile() {
 
 export default function Home() {
   const [activeSection, setActiveSection] = useState<Section>('overview');
-  const [loading, setLoading] = useState(true);
-  const [liveStatus, setLiveStatus] = useState<'live' | 'warn' | 'error'>('warn');
-  const [dataSource, setDataSource] = useState<DataSource>('offline');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const isMobile = useIsMobile();
+  const queryClient = useQueryClient();
 
-  const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [partRequests, setPartRequests] = useState<PartRequest[]>([]);
-  const [revenueData, setRevenueData] = useState<RevenueData | null>(null);
-  const [growthData, setGrowthData] = useState<GrowthData | null>(null);
-  const [kpis, setKpis] = useState<DashboardKPIs | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  // ── React Query: each endpoint fetches independently ──
+  const statsQuery = useQuery({ queryKey: ['stats'], queryFn: fetchStats });
+  const vendorsQuery = useQuery({ queryKey: ['vendors'], queryFn: fetchVendors });
+  const ordersQuery = useQuery({ queryKey: ['orders'], queryFn: fetchOrders });
+  const productsQuery = useQuery({ queryKey: ['products'], queryFn: fetchProducts });
+  const partRequestsQuery = useQuery({ queryKey: ['partRequests'], queryFn: fetchPartRequests });
+  const revenueQuery = useQuery({ queryKey: ['revenue'], queryFn: fetchRevenue });
+  const growthQuery = useQuery({ queryKey: ['growth'], queryFn: fetchGrowth });
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [stats, vendorList, orderList, productList, prList, revData, grData] = await Promise.all([
-        fetchStats(),
-        fetchVendors(),
-        fetchOrders(),
-        fetchProducts(),
-        fetchPartRequests(),
-        fetchRevenue(),
-        fetchGrowth(),
-      ]);
-      setVendors(vendorList);
-      setOrders(orderList);
-      setProducts(productList);
-      setPartRequests(prList);
-      setRevenueData(revData);
-      setGrowthData(grData);
-      setKpis(computeKPIs(stats, vendorList, orderList, prList));
-      setLastUpdated(new Date());
-      const source = getDataSource();
-      setDataSource(source);
-      if (source === 'database') {
-        setLiveStatus('live');
-      } else {
-        setLiveStatus('warn');
-        toast.error('Not connected to database. Set DATABASE_URL and restart server.');
-      }
-    } catch {
-      setLiveStatus('error');
-      setDataSource('offline');
-      toast.error('Could not connect to VOOM backend. Check server is running.');
-    } finally {
-      setLoading(false);
+  const vendors = vendorsQuery.data ?? [];
+  const orders = ordersQuery.data ?? [];
+  const products = productsQuery.data ?? [];
+  const partRequests = partRequestsQuery.data ?? [];
+  const revenueData = revenueQuery.data ?? null;
+  const growthData = growthQuery.data ?? null;
+
+  const kpis = useMemo(() => {
+    if (!statsQuery.data && vendors.length === 0 && orders.length === 0) return null;
+    return computeKPIs(statsQuery.data ?? null, vendors, orders, partRequests);
+  }, [statsQuery.data, vendors, orders, partRequests]);
+
+  // ── Connection status ──
+  const dataSource: DataSource = getDataSource();
+  const isAnyLoading = statsQuery.isLoading || vendorsQuery.isLoading || ordersQuery.isLoading;
+  const liveStatus: 'live' | 'warn' | 'error' =
+    dataSource === 'database' ? 'live' :
+    (statsQuery.isError || vendorsQuery.isError) ? 'error' : 'warn';
+
+  const lastUpdated = useMemo(() => {
+    const latest = [statsQuery.dataUpdatedAt, vendorsQuery.dataUpdatedAt, ordersQuery.dataUpdatedAt]
+      .filter(Boolean)
+      .sort((a, b) => b - a)[0];
+    return latest ? new Date(latest) : new Date();
+  }, [statsQuery.dataUpdatedAt, vendorsQuery.dataUpdatedAt, ordersQuery.dataUpdatedAt]);
+
+  // Show toast on first successful or failed connection
+  useEffect(() => {
+    if (statsQuery.isSuccess && dataSource === 'database') {
+      // silently connected
+    } else if (statsQuery.isSuccess && dataSource === 'offline') {
+      toast.error('Not connected to database. Set DATABASE_URL and restart server.');
     }
-  }, []);
+  }, [statsQuery.isSuccess, dataSource]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  const handleRefresh = () => {
+    queryClient.invalidateQueries();
+  };
 
   const handleNavigate = (section: string) => {
     if (section === 'settings') {
@@ -116,14 +114,46 @@ export default function Home() {
   const renderSection = () => {
     if (!kpis) return null;
     switch (activeSection) {
-      case 'overview': return <Overview kpis={kpis} orders={orders} vendors={vendors} products={products} partRequests={partRequests} loading={loading} />;
-      case 'vendors': return <Vendors vendors={vendors} />;
-      case 'products': return <Products kpis={kpis} products={products} />;
-      case 'orders': return <Orders orders={orders} kpis={kpis} />;
-      case 'revenue': return <Revenue orders={orders} kpis={kpis} revenueData={revenueData} />;
-      case 'part-requests': return <PartRequests partRequests={partRequests} kpis={kpis} />;
-      case 'growth': return <Growth kpis={kpis} growthData={growthData} vendors={vendors} />;
-      default: return <Overview kpis={kpis} orders={orders} vendors={vendors} products={products} partRequests={partRequests} loading={loading} />;
+      case 'overview': return (
+        <WidgetErrorBoundary fallbackTitle="Overview failed to load">
+          <Overview kpis={kpis} orders={orders} vendors={vendors} products={products} partRequests={partRequests} loading={isAnyLoading} />
+        </WidgetErrorBoundary>
+      );
+      case 'vendors': return (
+        <WidgetErrorBoundary fallbackTitle="Vendors failed to load">
+          <Vendors vendors={vendors} />
+        </WidgetErrorBoundary>
+      );
+      case 'products': return (
+        <WidgetErrorBoundary fallbackTitle="Products failed to load">
+          <Products kpis={kpis} products={products} />
+        </WidgetErrorBoundary>
+      );
+      case 'orders': return (
+        <WidgetErrorBoundary fallbackTitle="Orders failed to load">
+          <Orders orders={orders} kpis={kpis} />
+        </WidgetErrorBoundary>
+      );
+      case 'revenue': return (
+        <WidgetErrorBoundary fallbackTitle="Revenue failed to load">
+          <Revenue orders={orders} kpis={kpis} revenueData={revenueData} />
+        </WidgetErrorBoundary>
+      );
+      case 'part-requests': return (
+        <WidgetErrorBoundary fallbackTitle="Part Requests failed to load">
+          <PartRequests partRequests={partRequests} kpis={kpis} />
+        </WidgetErrorBoundary>
+      );
+      case 'growth': return (
+        <WidgetErrorBoundary fallbackTitle="Growth failed to load">
+          <Growth kpis={kpis} growthData={growthData} vendors={vendors} />
+        </WidgetErrorBoundary>
+      );
+      default: return (
+        <WidgetErrorBoundary fallbackTitle="Overview failed to load">
+          <Overview kpis={kpis} orders={orders} vendors={vendors} products={products} partRequests={partRequests} loading={isAnyLoading} />
+        </WidgetErrorBoundary>
+      );
     }
   };
 
@@ -145,7 +175,7 @@ export default function Home() {
         }} />
       </div>
 
-      {/* Desktop Sidebar — hidden on mobile */}
+      {/* Desktop Sidebar */}
       {!isMobile && (
         <Sidebar activeSection={activeSection} onNavigate={handleNavigate} liveStatus={liveStatus} />
       )}
@@ -193,7 +223,6 @@ export default function Home() {
           gap: '0.75rem',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', minWidth: 0 }}>
-            {/* Mobile hamburger */}
             {isMobile && (
               <button
                 onClick={() => setSidebarOpen(true)}
@@ -211,7 +240,6 @@ export default function Home() {
                 </svg>
               </button>
             )}
-            {/* Mobile: show VOOM logo */}
             {isMobile && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <div style={{
@@ -256,7 +284,7 @@ export default function Home() {
               </div>
             )}
             <button
-              onClick={loadData}
+              onClick={handleRefresh}
               style={{
                 width: 34, height: 34, borderRadius: '0.5rem',
                 background: 'rgba(79,70,229,0.08)', border: 'none',
@@ -297,7 +325,7 @@ export default function Home() {
 
         {/* Page Content */}
         <div style={{ padding: isMobile ? '1rem' : '1.75rem 2rem 3rem' }}>
-          {loading && !kpis ? (
+          {isAnyLoading && !kpis ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
               <div style={{ textAlign: 'center' }}>
                 <div style={{
@@ -315,7 +343,6 @@ export default function Home() {
         </div>
       </main>
 
-      {/* Mobile Bottom Tab Bar */}
       {isMobile && (
         <MobileNav activeSection={activeSection} onNavigate={handleNavigate} />
       )}

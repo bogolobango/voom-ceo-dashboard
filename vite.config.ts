@@ -23,6 +23,23 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "vendor-react": ["react", "react-dom"],
+          "vendor-charts": ["recharts"],
+          "vendor-radix": [
+            "@radix-ui/react-tooltip",
+            "@radix-ui/react-dialog",
+            "@radix-ui/react-popover",
+            "@radix-ui/react-select",
+            "@radix-ui/react-tabs",
+          ],
+          "vendor-ui": ["framer-motion", "sonner", "wouter"],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 500,
   },
   server: {
     port: 3000,
