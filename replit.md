@@ -45,6 +45,23 @@ See `.env.example` for all available variables:
 - PII redaction in server logs (phone numbers, emails, names)
 - `noindex, nofollow` robots header on all responses
 
+## Supabase Integration
+
+The Supabase client is available for use in the frontend at `client/src/utils/supabase/client.ts`.
+
+```typescript
+import { supabase } from "@/utils/supabase/client";
+
+// Example: query a table
+const { data, error } = await supabase.from("your_table").select();
+```
+
+Environment variables (set in Replit secrets):
+- `VITE_SUPABASE_URL` — Your Supabase project URL
+- `VITE_SUPABASE_ANON_KEY` — Your Supabase publishable/anon key
+
+**Note:** This project uses Vite (not Next.js), so the client uses `import.meta.env.VITE_*` instead of `process.env.NEXT_PUBLIC_*`. There is no SSR/server-side Supabase client — the Express API server connects to PostgreSQL via Drizzle ORM instead.
+
 ## Key Dependencies
 
 - `drizzle-orm` + `pg` — PostgreSQL ORM
