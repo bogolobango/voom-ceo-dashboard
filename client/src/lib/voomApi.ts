@@ -385,3 +385,157 @@ export function getProductConditionDist(products: Product[]) {
     refurbished: { count: dist.refurbished, pct: Math.round((dist.refurbished / total) * 100) },
   };
 }
+
+// ─── Vendor Detail Types ───
+
+export interface VendorDetail {
+  id: number;
+  userId: number;
+  businessName: string;
+  description: string | null;
+  phone: string;
+  whatsapp: string | null;
+  email: string | null;
+  address: string | null;
+  city: string | null;
+  region: string | null;
+  logoUrl: string | null;
+  coverUrl: string | null;
+  status: 'pending' | 'approved' | 'rejected' | 'suspended';
+  verified: boolean;
+  rating: string | null;
+  totalSales: number;
+  ghanaCardNumber: string | null;
+  idDocumentUrl: string | null;
+  businessRegUrl: string | null;
+  tier: string;
+  tierExpiresAt: string | null;
+  tierTrialUsed: boolean;
+  isFeatured: boolean;
+  featuredUntil: string | null;
+  featuredCategoryId: number | null;
+  createdAt: string;
+  updatedAt: string;
+  totalListings: number;
+  totalOrders: number;
+  totalRevenue: number;
+}
+
+export interface VendorOrder {
+  id: number;
+  orderNumber: string;
+  totalAmount: string;
+  commissionAmount: string | null;
+  currency: string;
+  status: string;
+  paymentMethod: string;
+  paymentStatus: string;
+  buyerName: string | null;
+  buyerPhone: string | null;
+  createdAt: string;
+}
+
+export interface VendorPayout {
+  id: number;
+  orderId: number | null;
+  amount: string;
+  type: string;
+  status: string;
+  flutterwaveRef: string | null;
+  createdAt: string;
+}
+
+export interface VendorNotification {
+  id: number;
+  title: string;
+  message: string;
+  type: string;
+  read: boolean;
+  link: string | null;
+  createdAt: string;
+}
+
+export interface VendorSubscriptionEvent {
+  id: number;
+  event: string;
+  fromTier: string | null;
+  toTier: string | null;
+  amount: string | null;
+  createdAt: string;
+}
+
+// ─── Vendor Detail API Functions ───
+
+export async function fetchVendorDetail(vendorId: number): Promise<VendorDetail | null> {
+  const result = await apiGet<{ source: string; data: VendorDetail }>(`/api/vendors/${vendorId}`);
+  if (result?.source === 'database') return result.data;
+  return null;
+}
+
+export async function fetchVendorOrders(vendorId: number): Promise<VendorOrder[]> {
+  const result = await apiGet<{ source: string; data: VendorOrder[] }>(`/api/vendors/${vendorId}/orders`);
+  if (result?.source === 'database') return result.data;
+  return [];
+}
+
+export async function fetchVendorPayouts(vendorId: number): Promise<VendorPayout[]> {
+  const result = await apiGet<{ source: string; data: VendorPayout[] }>(`/api/vendors/${vendorId}/payouts`);
+  if (result?.source === 'database') return result.data;
+  return [];
+}
+
+export async function fetchVendorNotifications(vendorId: number): Promise<VendorNotification[]> {
+  const result = await apiGet<{ source: string; data: VendorNotification[] }>(`/api/vendors/${vendorId}/notifications`);
+  if (result?.source === 'database') return result.data;
+  return [];
+}
+
+export async function fetchVendorSubscriptionEvents(vendorId: number): Promise<VendorSubscriptionEvent[]> {
+  const result = await apiGet<{ source: string; data: VendorSubscriptionEvent[] }>(`/api/vendors/${vendorId}/subscription-events`);
+  if (result?.source === 'database') return result.data;
+  return [];
+}
+
+export async function updateVendorStatus(vendorId: number, status: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/vendors/${vendorId}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
+export async function updateVendorTier(vendorId: number, tier: string, tierExpiresAt?: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/vendors/${vendorId}/tier`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tier, tierExpiresAt }),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
+export async function updateVendorFeatured(vendorId: number, isFeatured: boolean, featuredUntil?: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/vendors/${vendorId}/featured`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isFeatured, featuredUntil }),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
+export async function sendVendorNotification(vendorId: number, title: string, message: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/vendors/${vendorId}/notifications`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, message }),
+    });
+    return res.ok;
+  } catch { return false; }
+}
