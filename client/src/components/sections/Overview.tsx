@@ -71,11 +71,11 @@ export function Overview({ kpis, orders, vendors, products, partRequests, loadin
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 6), [orders]);
 
-  const pieData = Object.entries(orderDist).map(([status, count]) => ({
+  const pieData = useMemo(() => Object.entries(orderDist).map(([status, count]) => ({
     name: status.charAt(0).toUpperCase() + status.slice(1),
     value: count,
     color: ORDER_STATUS_COLORS[status] || '#94A3B8',
-  }));
+  })), [orderDist]);
 
   if (loading) {
     return (
@@ -246,7 +246,7 @@ export function Overview({ kpis, orders, vendors, products, partRequests, loadin
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '0.5rem' }}>
                   <p style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0F172A', fontFamily: 'Space Grotesk', margin: 0 }}>
-                    GH₵ {parseFloat(order.totalAmount).toFixed(0)}
+                    GH₵ {(parseFloat(order.totalAmount) || 0).toFixed(0)}
                   </p>
                   <span style={{
                     fontSize: '0.62rem', fontWeight: 600, color: statusColor,

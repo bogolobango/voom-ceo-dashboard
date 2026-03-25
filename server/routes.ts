@@ -477,7 +477,7 @@ router.get("/api/health", async (_req, res) => {
     return res.json({
       status: "ok",
       database: "not_configured",
-      hint: "Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables",
+      hint: "Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables",
     });
   }
   try {
@@ -485,7 +485,8 @@ router.get("/api/health", async (_req, res) => {
     if (error) throw error;
     res.json({ status: "ok", database: "connected", userCount: count });
   } catch (error: any) {
-    res.json({ status: "ok", database: "error", error: error.message });
+    safeLogError("Health check error", error);
+    res.json({ status: "ok", database: "error", error: "Database connection failed" });
   }
 });
 
@@ -511,43 +512,38 @@ router.get("/api/briefing", async (_req, res) => {
     const sevenDaysFromNow = new Date(now.getTime() + 7 * 86400000).toISOString();
     const nowISO = now.toISOString();
 
-    // Today counts
+    // All 13 independent queries in a single Promise.all (was 3 sequential batches)
     const [
       { count: todaySearches },
       { count: todayWhatsappTaps },
       { count: todayProductViews },
       { count: todayNewVendors },
       { count: todayPartRequests },
+      { count: yesterdaySearches },
+      { count: yesterdayWhatsappTaps },
+      { count: yesterdayProductViews },
+      { count: yesterdayNewVendors },
+      { count: yesterdayPartRequests },
+      { data: recentSearchEvents },
+      { data: expiringVendorsRaw },
+      { data: paidVendorsRaw },
     ] = await Promise.all([
       supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "search").gte("createdAt", todayStart),
       supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "whatsapp_tap").gte("createdAt", todayStart),
       supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "product_view").gte("createdAt", todayStart),
       supabase!.from("vendors").select("*", { count: "exact", head: true }).gte("createdAt", todayStart),
       supabase!.from("part_requests").select("*", { count: "exact", head: true }).gte("createdAt", todayStart),
-    ]);
-
-    // Yesterday counts
-    const [
-      { count: yesterdaySearches },
-      { count: yesterdayWhatsappTaps },
-      { count: yesterdayProductViews },
-      { count: yesterdayNewVendors },
-      { count: yesterdayPartRequests },
-    ] = await Promise.all([
       supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "search").gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
       supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "whatsapp_tap").gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
       supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "product_view").gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
       supabase!.from("vendors").select("*", { count: "exact", head: true }).gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
       supabase!.from("part_requests").select("*", { count: "exact", head: true }).gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
+      supabase!.from("analytics_events").select("metadata").eq("eventType", "search").gte("createdAt", twentyFourHoursAgo),
+      supabase!.from("vendors").select("id, businessName, tier, tierExpiresAt").neq("tier", "free").gte("tierExpiresAt", nowISO).lte("tierExpiresAt", sevenDaysFromNow),
+      supabase!.from("vendors").select("tier, tierExpiresAt").neq("tier", "free"),
     ]);
 
-    // Top searches & zero-result searches from last 24h
-    const { data: recentSearchEvents } = await supabase!
-      .from("analytics_events")
-      .select("metadata")
-      .eq("eventType", "search")
-      .gte("createdAt", twentyFourHoursAgo);
-
+    // Process search events
     const queryCountMap = new Map<string, number>();
     const queryResultMap = new Map<string, number>();
     const zeroResultMap = new Map<string, number>();
@@ -571,26 +567,12 @@ router.get("/api/briefing", async (_req, res) => {
       .sort((a, b) => b[1] - a[1])
       .map(([query, count]) => ({ query, count }));
 
-    // Expiring vendors (paid, expiring within 7 days)
-    const { data: expiringVendorsRaw } = await supabase!
-      .from("vendors")
-      .select("id, businessName, tier, tierExpiresAt")
-      .neq("tier", "free")
-      .gte("tierExpiresAt", nowISO)
-      .lte("tierExpiresAt", sevenDaysFromNow);
-
     const expiringVendors = (expiringVendorsRaw || []).map((v: any) => ({
       id: v.id,
       businessName: v.businessName,
       tier: v.tier,
       tierExpiresAt: v.tierExpiresAt,
     }));
-
-    // Active paid vendors & MRR
-    const { data: paidVendorsRaw } = await supabase!
-      .from("vendors")
-      .select("tier, tierExpiresAt")
-      .neq("tier", "free");
 
     let activePaidVendors = 0;
     let mrr = 0;
@@ -913,6 +895,8 @@ router.patch("/api/vendors/:id/status", async (req, res) => {
 
     cache.del(CACHE_KEYS.stats);
     cache.del(CACHE_KEYS.vendorHealth);
+    cache.del(CACHE_KEYS.briefing);
+    cache.del(CACHE_KEYS.growth);
 
     res.json(data);
   } catch (error) {
@@ -940,6 +924,9 @@ router.patch("/api/vendors/:id/tier", async (req, res) => {
       updatedAt: new Date().toISOString(),
     };
     if (tierExpiresAt !== undefined) {
+      if (typeof tierExpiresAt !== "string" || isNaN(Date.parse(tierExpiresAt))) {
+        return res.status(400).json({ error: "tierExpiresAt must be a valid ISO 8601 date string" });
+      }
       updateFields.tierExpiresAt = tierExpiresAt;
     }
 
@@ -957,6 +944,8 @@ router.patch("/api/vendors/:id/tier", async (req, res) => {
 
     cache.del(CACHE_KEYS.stats);
     cache.del(CACHE_KEYS.vendorHealth);
+    cache.del(CACHE_KEYS.briefing);
+    cache.del(CACHE_KEYS.growth);
 
     res.json(data);
   } catch (error) {
@@ -983,9 +972,15 @@ router.patch("/api/vendors/:id/featured", async (req, res) => {
       updatedAt: new Date().toISOString(),
     };
     if (featuredUntil !== undefined) {
+      if (typeof featuredUntil !== "string" || isNaN(Date.parse(featuredUntil))) {
+        return res.status(400).json({ error: "featuredUntil must be a valid ISO 8601 date string" });
+      }
       updateFields.featuredUntil = featuredUntil;
     }
     if (featuredCategoryId !== undefined) {
+      if (typeof featuredCategoryId !== "number" || !Number.isInteger(featuredCategoryId) || featuredCategoryId < 1) {
+        return res.status(400).json({ error: "featuredCategoryId must be a positive integer" });
+      }
       updateFields.featuredCategoryId = featuredCategoryId;
     }
 
@@ -1003,6 +998,8 @@ router.patch("/api/vendors/:id/featured", async (req, res) => {
 
     cache.del(CACHE_KEYS.stats);
     cache.del(CACHE_KEYS.vendorHealth);
+    cache.del(CACHE_KEYS.briefing);
+    cache.del(CACHE_KEYS.growth);
 
     res.json(data);
   } catch (error) {
@@ -1033,13 +1030,23 @@ router.post("/api/vendors/:id/notifications", async (req, res) => {
     if (!title || !message) {
       return res.status(400).json({ error: "title and message are required" });
     }
+    if (typeof title !== "string" || title.length > 255) {
+      return res.status(400).json({ error: "title must be a string with max 255 characters" });
+    }
+    if (typeof message !== "string" || message.length > 10000) {
+      return res.status(400).json({ error: "message must be a string with max 10000 characters" });
+    }
 
+    const validTypes = ["order", "vendor", "system", "inventory"];
     const insertFields: Record<string, any> = {
       userId: vendor.userId,
       title,
       message,
     };
     if (type !== undefined) {
+      if (!validTypes.includes(type)) {
+        return res.status(400).json({ error: "type must be one of: " + validTypes.join(", ") });
+      }
       insertFields.type = type;
     }
 

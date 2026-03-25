@@ -4,7 +4,7 @@
  * Tracks conversion of 97 pre-loaded vendors through the sales pipeline
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import type { Vendor, DashboardKPIs } from '../../lib/voomApi';
 
 interface VendorCRMProps {
@@ -133,10 +133,14 @@ export function VendorCRM({ vendors, kpis }: VendorCRMProps) {
     else { setSortField(field); setSortDir('asc'); }
   };
 
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (copyTimerRef.current) clearTimeout(copyTimerRef.current); }, []);
+
   const handleCopy = (idx: number) => {
     navigator.clipboard.writeText(OUTREACH_TEMPLATES[idx].message).then(() => {
       setCopiedIdx(idx);
-      setTimeout(() => setCopiedIdx(null), 2000);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopiedIdx(null), 2000);
     });
   };
 

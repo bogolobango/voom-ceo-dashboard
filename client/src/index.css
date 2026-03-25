@@ -192,7 +192,7 @@
     grid-template-columns: 1fr;
     gap: 0.75rem;
   }
-  @media (min-width: 900px) {
+  @media (min-width: 768px) {
     .chart-main-grid { grid-template-columns: 2fr 1fr; }
   }
 
@@ -240,7 +240,7 @@
     padding-left: 1rem;
     padding-right: 1rem;
   }
-  .flex {
+  .flex-safe {
     min-height: 0;
     min-width: 0;
   }
@@ -251,12 +251,12 @@
     .container { padding-left: 2rem; padding-right: 2rem; max-width: 1440px; }
   }
 
-  /* ── Arctic Glass Card ── */
-  .glass-card.p-5 {
-    padding: 0.875rem !important;
+  /* ── Arctic Glass Card padding override ── */
+  .glass-card-padded {
+    padding: 0.875rem;
   }
   @media (min-width: 768px) {
-    .glass-card.p-5 { padding: 1.25rem !important; }
+    .glass-card-padded { padding: 1.25rem; }
   }
 
   .glass-card {
@@ -421,14 +421,4 @@
   0% { transform: scale(1); opacity: 0.3; }
   50% { transform: scale(1.8); opacity: 0; }
   100% { transform: scale(1); opacity: 0; }
-}
-
-@keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-8px); }
-}
-
-@keyframes count-up {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
 }

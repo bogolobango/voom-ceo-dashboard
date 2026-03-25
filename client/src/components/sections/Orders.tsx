@@ -151,7 +151,7 @@ export function Orders({ orders, kpis }: OrdersProps) {
                       {order.vendorName || '—'} · {PAYMENT_LABELS[order.paymentMethod] || order.paymentMethod}
                     </span>
                     <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#0F172A', fontFamily: 'Space Grotesk' }}>
-                      GH₵ {parseFloat(order.totalAmount).toFixed(0)}
+                      GH₵ {(parseFloat(order.totalAmount) || 0).toFixed(0)}
                     </span>
                   </div>
                 </div>
@@ -178,7 +178,7 @@ export function Orders({ orders, kpis }: OrdersProps) {
                     {order.vendorName || '—'}
                   </span>
                   <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#0F172A', fontFamily: 'Space Grotesk', display: 'flex', alignItems: 'center' }}>
-                    GH₵ {parseFloat(order.totalAmount).toFixed(0)}
+                    GH₵ {(parseFloat(order.totalAmount) || 0).toFixed(0)}
                   </span>
                   <span style={{ fontSize: '0.72rem', color: '#64748B', display: 'flex', alignItems: 'center' }}>
                     {PAYMENT_LABELS[order.paymentMethod] || order.paymentMethod}

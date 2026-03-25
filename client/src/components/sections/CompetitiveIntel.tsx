@@ -51,9 +51,12 @@ const RISK_STYLES = {
   low: { bg: 'rgba(5,150,105,0.1)', color: '#059669', border: 'rgba(5,150,105,0.15)' },
 };
 
+/** Estimated total vendor count in Abossey Okai market */
+const ABOSSEY_OKAI_VENDOR_COUNT = 15_000;
+
 export function CompetitiveIntel({ vendors, kpis }: CompetitiveIntelProps) {
   const activeVendors = useMemo(() => vendors.filter(v => v.status === 'approved').length, [vendors]);
-  const marketPenetration = useMemo(() => ((activeVendors / 15000) * 100).toFixed(3), [activeVendors]);
+  const marketPenetration = useMemo(() => ((activeVendors / ABOSSEY_OKAI_VENDOR_COUNT) * 100).toFixed(3), [activeVendors]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -72,7 +75,7 @@ export function CompetitiveIntel({ vendors, kpis }: CompetitiveIntelProps) {
       <div className="four-col-grid">
         {[
           { label: 'Ghana Vehicles', value: '2.1M', sub: 'Registered nationwide', color: '#4F46E5' },
-          { label: 'Abossey Okai', value: '15,000+', sub: 'Vendor count', color: '#7C3AED' },
+          { label: 'Abossey Okai', value: `${ABOSSEY_OKAI_VENDOR_COUNT.toLocaleString()}+`, sub: 'Vendor count', color: '#7C3AED' },
           { label: 'VOOM Active', value: String(activeVendors), sub: 'Approved vendors', color: '#059669' },
           { label: 'Penetration', value: `${marketPenetration}%`, sub: 'Of Abossey Okai market', color: '#D97706' },
         ].map(item => (

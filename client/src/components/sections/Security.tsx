@@ -5,11 +5,11 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { MetricCard } from '../MetricCard';
-import type { DashboardKPIs } from '../../lib/voomApi';
-import { getDataSource } from '../../lib/voomApi';
+import type { DashboardKPIs, DataSource } from '../../lib/voomApi';
 
 interface SecurityProps {
   kpis: DashboardKPIs;
+  dataSource?: DataSource;
 }
 
 function SectionTitle({ children, sub }: { children: React.ReactNode; sub?: string }) {
@@ -32,7 +32,18 @@ interface HealthStatus {
   error?: string;
 }
 
-export function Security({ kpis }: SecurityProps) {
+const SECURITY_CHECKLIST = [
+  { label: 'Rate limiting enabled (200 req/15min)', ok: true },
+  { label: 'Helmet security headers active', ok: true },
+  { label: 'CORS configured', ok: true },
+  { label: 'PII log redaction active', ok: true },
+  { label: 'SSL/TLS on database connection', ok: true },
+  { label: 'API key authentication required in production', ok: true },
+  { label: 'No WAF configured', ok: false, warning: 'Web Application Firewall not detected' },
+  { label: 'No automated backups verified', ok: false, warning: 'Backup verification not configured' },
+] satisfies readonly { label: string; ok: boolean; warning?: string }[];
+
+export function Security({ kpis, dataSource = 'offline' }: SecurityProps) {
   const [healthStatus, setHealthStatus] = useState<HealthStatus | null>(null);
   const [healthLoading, setHealthLoading] = useState(false);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
@@ -59,22 +70,10 @@ export function Security({ kpis }: SecurityProps) {
     checkHealth();
   }, [checkHealth]);
 
-  const dataSource = getDataSource();
   const isConnected = dataSource === 'database';
 
-  const securityChecklist = [
-    { label: 'Rate limiting enabled (200 req/15min)', ok: true },
-    { label: 'Helmet security headers active', ok: true },
-    { label: 'CORS configured', ok: true },
-    { label: 'PII log redaction active', ok: true },
-    { label: 'SSL/TLS on database connection', ok: true },
-    { label: 'API key authentication', ok: false, warning: 'Warn if not set in production' },
-    { label: 'No WAF configured', ok: false, warning: 'Web Application Firewall not detected' },
-    { label: 'No automated backups verified', ok: false, warning: 'Backup verification not configured' },
-  ];
-
-  const passCount = securityChecklist.filter(i => i.ok).length;
-  const warnCount = securityChecklist.filter(i => !i.ok).length;
+  const passCount = SECURITY_CHECKLIST.filter(i => i.ok).length;
+  const warnCount = SECURITY_CHECKLIST.filter(i => !i.ok).length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -248,7 +247,7 @@ export function Security({ kpis }: SecurityProps) {
           Security Checklist
         </SectionTitle>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          {securityChecklist.map((item, i) => (
+          {SECURITY_CHECKLIST.map((item, i) => (
             <div
               key={i}
               style={{

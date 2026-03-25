@@ -25,7 +25,7 @@ const poolConfig = process.env.DATABASE_URL
       max: 5, // Serverless: keep pool small
       idleTimeoutMillis: 10000,
       connectionTimeoutMillis: 10000,
-      ssl: { rejectUnauthorized: false },
+      ssl: true,
     }
   : undefined;
 
@@ -61,6 +61,19 @@ function parsePagination(query: Record<string, any>) {
 const app = express();
 app.use(express.json({ limit: "1mb" }));
 
+// ─── Authentication Middleware ───
+const apiKey = process.env.DASHBOARD_API_KEY;
+app.use("/api", (req, res, next) => {
+  if (req.path === "/health") return next();
+  if (apiKey) {
+    const provided = req.headers["x-api-key"];
+    if (provided !== apiKey) {
+      return res.status(401).json({ error: "Unauthorized. Provide a valid X-API-Key header." });
+    }
+  }
+  next();
+});
+
 // Health
 app.get("/api/health", async (_req, res) => {
   if (!db) {
@@ -81,7 +94,7 @@ app.get("/api/health", async (_req, res) => {
       dbName: (result as any).rows?.[0]?.db_name,
     });
   } catch (error: any) {
-    res.json({ status: "ok", database: "error", error: error.message });
+    res.json({ status: "ok", database: "error", error: "Database connection failed" });
   }
 });
 
