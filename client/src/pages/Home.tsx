@@ -16,17 +16,22 @@ import { Orders } from '../components/sections/Orders';
 import { Revenue } from '../components/sections/Revenue';
 import { PartRequests } from '../components/sections/PartRequests';
 import { Growth } from '../components/sections/Growth';
+import { MorningBriefing } from '../components/sections/MorningBriefing';
+import { VendorCRM } from '../components/sections/VendorCRM';
+import { Security } from '../components/sections/Security';
+import { CompetitiveIntel } from '../components/sections/CompetitiveIntel';
 import {
   fetchStats, fetchVendors, fetchOrders, fetchProducts,
-  fetchPartRequests, fetchRevenue, fetchGrowth,
+  fetchPartRequests, fetchRevenue, fetchGrowth, fetchBriefing,
   computeKPIs, getDataSource,
   type DataSource,
 } from '../lib/voomApi';
 import { toast } from 'sonner';
 
-type Section = 'overview' | 'vendors' | 'products' | 'orders' | 'revenue' | 'part-requests' | 'growth' | 'settings';
+type Section = 'briefing' | 'overview' | 'vendors' | 'products' | 'orders' | 'revenue' | 'part-requests' | 'growth' | 'crm' | 'security' | 'competitive' | 'settings';
 
 const SECTION_LABELS: Record<Section, string> = {
+  briefing: 'Morning Briefing',
   overview: 'Overview',
   vendors: 'Vendors',
   products: 'Products',
@@ -34,6 +39,9 @@ const SECTION_LABELS: Record<Section, string> = {
   revenue: 'Revenue',
   'part-requests': 'Part Requests',
   growth: 'Growth',
+  crm: 'Outreach CRM',
+  security: 'Security',
+  competitive: 'Competitive Intel',
   settings: 'Settings',
 };
 
@@ -48,7 +56,7 @@ function useIsMobile() {
 }
 
 export default function Home() {
-  const [activeSection, setActiveSection] = useState<Section>('overview');
+  const [activeSection, setActiveSection] = useState<Section>('briefing');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
@@ -61,6 +69,7 @@ export default function Home() {
   const partRequestsQuery = useQuery({ queryKey: ['partRequests'], queryFn: fetchPartRequests });
   const revenueQuery = useQuery({ queryKey: ['revenue'], queryFn: fetchRevenue });
   const growthQuery = useQuery({ queryKey: ['growth'], queryFn: fetchGrowth });
+  const briefingQuery = useQuery({ queryKey: ['briefing'], queryFn: fetchBriefing });
 
   const vendors = vendorsQuery.data ?? [];
   const orders = ordersQuery.data ?? [];
@@ -68,6 +77,15 @@ export default function Home() {
   const partRequests = partRequestsQuery.data ?? [];
   const revenueData = revenueQuery.data ?? null;
   const growthData = growthQuery.data ?? null;
+  const briefingData = briefingQuery.data ?? {
+    todaySearches: 0, yesterdaySearches: 0,
+    todayWhatsappTaps: 0, yesterdayWhatsappTaps: 0,
+    todayProductViews: 0, yesterdayProductViews: 0,
+    todayNewVendors: 0, yesterdayNewVendors: 0,
+    todayPartRequests: 0, yesterdayPartRequests: 0,
+    topSearches: [], zeroResultSearches: [],
+    expiringVendors: [], activePaidVendors: 0, mrr: 0,
+  };
 
   const kpis = useMemo(() => {
     if (!statsQuery.data && vendors.length === 0 && orders.length === 0) return null;
@@ -111,9 +129,29 @@ export default function Home() {
     setSidebarOpen(false);
   };
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const shortcuts: Record<string, Section> = {
+        '1': 'briefing', '2': 'overview', '3': 'vendors', '4': 'products',
+        '5': 'orders', '6': 'revenue', '7': 'crm', '8': 'security',
+      };
+      if (shortcuts[e.key]) { setActiveSection(shortcuts[e.key]); return; }
+      if (e.key === 'r') { handleRefresh(); return; }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   const renderSection = () => {
     if (!kpis) return null;
     switch (activeSection) {
+      case 'briefing': return (
+        <WidgetErrorBoundary fallbackTitle="Briefing failed to load">
+          <MorningBriefing briefingData={briefingData} vendors={vendors} kpis={kpis} />
+        </WidgetErrorBoundary>
+      );
       case 'overview': return (
         <WidgetErrorBoundary fallbackTitle="Overview failed to load">
           <Overview kpis={kpis} orders={orders} vendors={vendors} products={products} partRequests={partRequests} loading={isAnyLoading} />
@@ -149,9 +187,24 @@ export default function Home() {
           <Growth kpis={kpis} growthData={growthData} vendors={vendors} />
         </WidgetErrorBoundary>
       );
+      case 'crm': return (
+        <WidgetErrorBoundary fallbackTitle="CRM failed to load">
+          <VendorCRM vendors={vendors} kpis={kpis} />
+        </WidgetErrorBoundary>
+      );
+      case 'security': return (
+        <WidgetErrorBoundary fallbackTitle="Security failed to load">
+          <Security kpis={kpis} />
+        </WidgetErrorBoundary>
+      );
+      case 'competitive': return (
+        <WidgetErrorBoundary fallbackTitle="Competitive Intel failed to load">
+          <CompetitiveIntel vendors={vendors} kpis={kpis} />
+        </WidgetErrorBoundary>
+      );
       default: return (
-        <WidgetErrorBoundary fallbackTitle="Overview failed to load">
-          <Overview kpis={kpis} orders={orders} vendors={vendors} products={products} partRequests={partRequests} loading={isAnyLoading} />
+        <WidgetErrorBoundary fallbackTitle="Briefing failed to load">
+          <MorningBriefing briefingData={briefingData} vendors={vendors} kpis={kpis} />
         </WidgetErrorBoundary>
       );
     }

@@ -116,6 +116,26 @@ export interface GrowthData {
   tierDistribution: { tier: string; count: number }[];
 }
 
+// ─── Briefing Types ───
+
+export interface BriefingData {
+  todaySearches: number;
+  yesterdaySearches: number;
+  todayWhatsappTaps: number;
+  yesterdayWhatsappTaps: number;
+  todayProductViews: number;
+  yesterdayProductViews: number;
+  todayNewVendors: number;
+  yesterdayNewVendors: number;
+  todayPartRequests: number;
+  yesterdayPartRequests: number;
+  topSearches: { query: string; count: number; results: number }[];
+  zeroResultSearches: { query: string; count: number }[];
+  expiringVendors: { id: number; businessName: string; tier: string; tierExpiresAt: string }[];
+  activePaidVendors: number;
+  mrr: number;
+}
+
 // ─── API fetch helper ───
 async function apiGet<T>(path: string): Promise<T | null> {
   try {
@@ -194,6 +214,22 @@ export async function fetchGrowth(): Promise<GrowthData | null> {
   const result = await apiGet<{ source: string; data: GrowthData }>('/api/growth');
   if (result?.source === 'database') return result.data;
   return null;
+}
+
+// ─── Briefing Data ───
+export async function fetchBriefing(): Promise<BriefingData | null> {
+  const result = await apiGet<{ source: string; data: BriefingData }>('/api/briefing');
+  if (result?.source === 'database') return result.data;
+  // Return default empty briefing for offline mode
+  return {
+    todaySearches: 0, yesterdaySearches: 0,
+    todayWhatsappTaps: 0, yesterdayWhatsappTaps: 0,
+    todayProductViews: 0, yesterdayProductViews: 0,
+    todayNewVendors: 0, yesterdayNewVendors: 0,
+    todayPartRequests: 0, yesterdayPartRequests: 0,
+    topSearches: [], zeroResultSearches: [],
+    expiringVendors: [], activePaidVendors: 0, mrr: 0,
+  };
 }
 
 // ─── Derived KPI Calculations ───

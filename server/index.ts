@@ -4,7 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import helmet from "helmet";
 import cors from "cors";
-import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import apiRoutes from "./routes.js";
 
@@ -84,7 +84,7 @@ async function startServer() {
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: "Too many requests. Please try again later." },
-    keyGenerator: (req) => ipKeyGenerator(req),
+    keyGenerator: (req) => req.ip || "unknown",
   });
 
   const heavyEndpointLimiter = rateLimit({
@@ -93,7 +93,7 @@ async function startServer() {
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: "Too many analytics requests. Please try again later." },
-    keyGenerator: (req) => ipKeyGenerator(req),
+    keyGenerator: (req) => req.ip || "unknown",
   });
 
   app.use(express.json({ limit: "1mb" }));
