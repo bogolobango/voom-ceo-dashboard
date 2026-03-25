@@ -42,8 +42,8 @@ export default defineConfig({
     chunkSizeWarningLimit: 500,
   },
   server: {
-    port: 3000,
-    strictPort: false,
+    port: 5000,
+    strictPort: true,
     host: true,
     allowedHosts: true,
     proxy: {

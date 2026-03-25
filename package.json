@@ -4,8 +4,8 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "dev": "vite --host",
-    "dev:client": "vite --host",
+    "dev": "concurrently \"tsx server/index.ts\" \"vite --host --port 5000\"",
+    "dev:client": "vite --host --port 5000",
     "dev:server": "tsx server/index.ts",
     "build": "vite build && esbuild server/index.ts server/routes.ts server/db.ts --platform=node --packages=external --bundle --format=esm --outdir=dist-server",
     "build:client": "vite build",
@@ -93,6 +93,7 @@
     "@vitejs/plugin-react": "^5.0.4",
     "add": "^2.0.6",
     "autoprefixer": "^10.4.20",
+    "concurrently": "^9.2.1",
     "drizzle-kit": "^0.31.10",
     "drizzle-zod": "^0.8.3",
     "esbuild": "^0.25.0",
