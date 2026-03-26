@@ -18,7 +18,7 @@ import {
   fetchVendorDetail, fetchVendorOrders, fetchVendorPayouts,
   fetchVendorNotifications, fetchVendorSubscriptionEvents,
   updateVendorStatus, updateVendorTier, updateVendorFeatured,
-  sendVendorNotification, fetchAnalyticsUsers, verifyUser,
+  sendVendorNotification, fetchAnalyticsUsers, verifyUser, updateUserRole,
 } from '../lib/voomApi';
 
 // ─── Status / Tier Helpers ───
@@ -32,8 +32,9 @@ const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }
 
 const TIER_COLORS: Record<string, string> = {
   free: '#94A3B8',
-  basic: '#4F46E5',
-  premium: '#D97706',
+  starter: '#4F46E5',
+  pro: '#0EA5E9',
+  business: '#D97706',
   enterprise: '#059669',
 };
 
@@ -113,9 +114,17 @@ function Spinner() {
 
 // ─── Linked User Account ───
 
+const ROLE_COLORS: Record<string, { bg: string; color: string }> = {
+  vendor: { bg: 'rgba(79,70,229,0.1)', color: '#4F46E5' },
+  user:   { bg: 'rgba(14,165,233,0.1)', color: '#0EA5E9' },
+  driver: { bg: 'rgba(217,119,6,0.1)',  color: '#D97706' },
+  admin:  { bg: 'rgba(5,150,105,0.1)',  color: '#059669' },
+};
+
 function LinkedUserAccount({ phone }: { phone: string | undefined }) {
   const queryClient = useQueryClient();
   const [verifyDone, setVerifyDone] = useState(false);
+  const [localRole, setLocalRole] = useState<string | null>(null);
 
   const { data: users = [] } = useQuery({
     queryKey: ['analytics-users'],
@@ -133,7 +142,19 @@ function LinkedUserAccount({ phone }: { phone: string | undefined }) {
     },
   });
 
+  const roleMutation = useMutation({
+    mutationFn: (role: string) => updateUserRole(linkedUser!.id, role),
+    onSuccess: (_ok, role) => {
+      setLocalRole(role);
+      queryClient.invalidateQueries({ queryKey: ['analytics-users'] });
+    },
+  });
+
   if (!linkedUser) return null;
+
+  const currentRole = localRole ?? linkedUser.role ?? 'user';
+  const roleStyle = ROLE_COLORS[currentRole] || { bg: 'rgba(100,116,139,0.1)', color: '#64748B' };
+  const targetRole = currentRole === 'vendor' ? 'user' : 'vendor';
 
   const isUnverified = !linkedUser.isVerified && !verifyDone;
   const justVerified = verifyDone || (linkedUser.isVerified && verifyMutation.isSuccess);
@@ -144,6 +165,14 @@ function LinkedUserAccount({ phone }: { phone: string | undefined }) {
       <InfoRow label="Email" value={linkedUser.email || '—'} />
       <InfoRow label="Login method" value={linkedUser.loginMethod || '—'} />
       <InfoRow label="Last sign-in" value={linkedUser.lastSignedIn ? new Date(linkedUser.lastSignedIn).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Never'} />
+      <InfoRow
+        label="Role"
+        value={
+          <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: 999, background: roleStyle.bg, color: roleStyle.color, textTransform: 'capitalize' }}>
+            {currentRole}
+          </span>
+        }
+      />
       <InfoRow
         label="Account status"
         value={
@@ -156,25 +185,42 @@ function LinkedUserAccount({ phone }: { phone: string | undefined }) {
           </span>
         }
       />
-      {isUnverified && (
-        <div style={{ marginTop: '0.625rem', padding: '0.75rem', background: 'rgba(225,29,72,0.05)', borderRadius: '0.625rem', border: '1px solid rgba(225,29,72,0.15)' }}>
-          <p style={{ margin: '0 0 0.5rem', fontSize: '0.78rem', color: '#E11D48', fontWeight: 600 }}>⚠️ User cannot log in — account is unverified</p>
+
+      {/* Role switcher */}
+      <div style={{ marginTop: '0.625rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <button
+          onClick={() => roleMutation.mutate(targetRole)}
+          disabled={roleMutation.isPending}
+          style={{
+            flex: 1, padding: '0.4375rem 0.875rem', borderRadius: '0.5rem',
+            border: '1.5px solid rgba(79,70,229,0.25)',
+            background: 'rgba(79,70,229,0.05)', color: '#4F46E5',
+            fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer',
+            opacity: roleMutation.isPending ? 0.6 : 1, fontFamily: 'Plus Jakarta Sans',
+          }}
+        >
+          {roleMutation.isPending ? 'Updating…' : `Switch to ${targetRole.charAt(0).toUpperCase() + targetRole.slice(1)}`}
+        </button>
+        {isUnverified && (
           <button
             onClick={() => verifyMutation.mutate()}
             disabled={verifyMutation.isPending}
             style={{
-              padding: '0.375rem 0.875rem', borderRadius: '0.5rem', border: 'none',
+              flex: 1, padding: '0.4375rem 0.875rem', borderRadius: '0.5rem', border: 'none',
               background: '#E11D48', color: '#fff', fontSize: '0.75rem', fontWeight: 700,
               cursor: 'pointer', opacity: verifyMutation.isPending ? 0.6 : 1,
               fontFamily: 'Plus Jakarta Sans',
             }}
           >
-            {verifyMutation.isPending ? 'Verifying…' : 'Fix: Mark Account Verified'}
+            {verifyMutation.isPending ? 'Verifying…' : 'Verify Account'}
           </button>
-        </div>
+        )}
+      </div>
+      {roleMutation.isSuccess && (
+        <p style={{ margin: '0.375rem 0 0', fontSize: '0.75rem', color: '#4F46E5', fontWeight: 600 }}>✓ Role updated to {currentRole}.</p>
       )}
       {justVerified && (
-        <p style={{ margin: '0.5rem 0 0', fontSize: '0.78rem', color: '#059669', fontWeight: 600 }}>✅ Account verified — user can now log in.</p>
+        <p style={{ margin: '0.375rem 0 0', fontSize: '0.75rem', color: '#059669', fontWeight: 600 }}>✅ Account verified — user can now log in.</p>
       )}
     </SectionCard>
   );
@@ -184,6 +230,7 @@ function LinkedUserAccount({ phone }: { phone: string | undefined }) {
 
 function OverviewTab({ vendor }: { vendor: VendorDetail }) {
   const [statusUpdating, setStatusUpdating] = useState(false);
+  const [tierGranted, setTierGranted] = useState(false);
   const queryClient = useQueryClient();
 
   const handleStatusChange = useCallback(async (newStatus: string) => {
@@ -195,6 +242,18 @@ function OverviewTab({ vendor }: { vendor: VendorDetail }) {
     }
     setStatusUpdating(false);
   }, [vendor.id, queryClient]);
+
+  const tierGrantMutation = useMutation({
+    mutationFn: () => {
+      const oneYearFromNow = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+      return updateVendorTier(vendor.id, 'pro', oneYearFromNow);
+    },
+    onSuccess: () => {
+      setTierGranted(true);
+      queryClient.invalidateQueries({ queryKey: ['vendorDetail', vendor.id] });
+      queryClient.invalidateQueries({ queryKey: ['vendors'] });
+    },
+  });
 
   const tierColor = TIER_COLORS[vendor.tier] || '#94A3B8';
 
@@ -378,6 +437,33 @@ function OverviewTab({ vendor }: { vendor: VendorDetail }) {
               {STATUS_STYLES[s].label}
             </button>
           ))}
+        </div>
+
+        {/* Tier quick action */}
+        <div style={{ marginTop: '0.875rem', paddingTop: '0.875rem', borderTop: '1px solid rgba(79,70,229,0.07)' }}>
+          <p style={{ fontSize: '0.75rem', color: '#64748B', margin: '0 0 0.5rem 0' }}>Subscription quick actions:</p>
+          {tierGranted ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', background: 'rgba(14,165,233,0.08)', borderRadius: '0.5rem', border: '1px solid rgba(14,165,233,0.2)' }}>
+              <span style={{ fontSize: '0.9rem' }}>🎉</span>
+              <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 600, color: '#0EA5E9' }}>Pro tier granted — free for 1 year. Expires {new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}.</p>
+            </div>
+          ) : (
+            <button
+              onClick={() => tierGrantMutation.mutate()}
+              disabled={tierGrantMutation.isPending || vendor.tier === 'pro'}
+              style={{
+                width: '100%', padding: '0.5rem 0.875rem', borderRadius: '0.5rem',
+                border: '1.5px solid rgba(14,165,233,0.3)',
+                background: vendor.tier === 'pro' ? 'rgba(14,165,233,0.05)' : 'rgba(14,165,233,0.08)',
+                color: '#0EA5E9', fontSize: '0.75rem', fontWeight: 700,
+                cursor: (tierGrantMutation.isPending || vendor.tier === 'pro') ? 'default' : 'pointer',
+                opacity: tierGrantMutation.isPending ? 0.6 : 1,
+                fontFamily: 'Plus Jakarta Sans', textAlign: 'left',
+              }}
+            >
+              {vendor.tier === 'pro' && !tierGranted ? '✓ Already on Pro tier' : tierGrantMutation.isPending ? 'Granting…' : '🎁 Grant 1-Year Pro (Free)'}
+            </button>
+          )}
         </div>
       </SectionCard>
 

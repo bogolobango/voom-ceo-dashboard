@@ -738,6 +738,27 @@ router.get("/api/analytics/users", async (_req, res) => {
   }
 });
 
+// ─── Analytics: Update User Role ────────────────────────────
+
+router.patch("/api/analytics/users/:id/role", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  const userId = parseInt(req.params.id, 10);
+  if (isNaN(userId)) return res.status(400).json({ error: "Invalid user ID" });
+  const { role } = req.body;
+  const validRoles = ["user", "vendor", "driver", "admin"];
+  if (!validRoles.includes(role)) return res.status(400).json({ error: "Invalid role. Must be one of: " + validRoles.join(", ") });
+  try {
+    const { error } = await supabase!.from("users")
+      .update({ role, updatedAt: new Date().toISOString() })
+      .eq("id", userId);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, userId, role });
+  } catch (error) {
+    safeLogError("Update user role error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
 // ─── Analytics: Verify User ─────────────────────────────────
 
 router.patch("/api/analytics/users/:id/verify", async (req, res) => {

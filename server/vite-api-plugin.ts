@@ -305,6 +305,22 @@ export default function viteApiPlugin(): Plugin {
             return json(res, { success: true, userId });
           }
 
+          // ─── /api/analytics/users/:id/role (PATCH) ───
+          const roleUserMatch = url.match(/^\/api\/analytics\/users\/(\d+)\/role$/);
+          if (roleUserMatch && req.method === "PATCH") {
+            if (!sb) return json(res, { error: "Database not available" }, 503);
+            const userId = parseInt(roleUserMatch[1], 10);
+            const body = await parseBody(req);
+            const { role } = body;
+            const validRoles = ["user", "vendor", "driver", "admin"];
+            if (!validRoles.includes(role)) return json(res, { error: "Invalid role" }, 400);
+            const { error } = await sb.from("users")
+              .update({ role, updatedAt: new Date().toISOString() })
+              .eq("id", userId);
+            if (error) return json(res, { error: error.message }, 400);
+            return json(res, { success: true, userId, role });
+          }
+
           // ─── /api/analytics/products ───
           if (url.startsWith("/api/analytics/products") && req.method === "GET") {
             if (!sb) return json(res, { source: "offline", data: null });

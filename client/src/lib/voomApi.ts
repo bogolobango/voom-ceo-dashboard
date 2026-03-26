@@ -308,6 +308,17 @@ export async function fetchProductAnalytics(timeRange: '1d' | '7d' | '30d' | 'al
   return result?.data ?? null;
 }
 
+export async function updateUserRole(userId: number, role: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/analytics/users/${userId}/role`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role }),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
 export async function verifyUser(userId: number): Promise<boolean> {
   try {
     const res = await fetch(`/api/analytics/users/${userId}/verify`, {
