@@ -86,15 +86,15 @@ function daysUntil(dateStr: string): number {
 
 export function MorningBriefing({ briefingData, vendors, kpis }: MorningBriefingProps) {
   const {
-    todaySearches, yesterdaySearches,
-    todayWhatsappTaps, yesterdayWhatsappTaps,
-    todayProductViews, yesterdayProductViews,
-    todayNewVendors, yesterdayNewVendors,
-    todayPartRequests, yesterdayPartRequests,
-    todayNewUsers, yesterdayNewUsers, totalUsers,
-    topSearches, zeroResultSearches, expiringVendors,
-    activePaidVendors, mrr, topCategories,
-  } = briefingData;
+    todaySearches = 0, yesterdaySearches = 0,
+    todayWhatsappTaps = 0, yesterdayWhatsappTaps = 0,
+    todayProductViews = 0, yesterdayProductViews = 0,
+    todayNewVendors = 0, yesterdayNewVendors = 0,
+    todayPartRequests = 0, yesterdayPartRequests = 0,
+    todayNewUsers = 0, yesterdayNewUsers = 0, totalUsers = 0,
+    topSearches = [], zeroResultSearches = [], expiringVendors = [],
+    activePaidVendors = 0, mrr = 0, topCategories = [],
+  } = briefingData ?? {};
 
   const mrrUsd = useMemo(() => mrr / USD_RATE, [mrr]);
 
