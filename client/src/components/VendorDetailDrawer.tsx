@@ -131,6 +131,91 @@ function OverviewTab({ vendor }: { vendor: VendorDetail }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+
+      {/* ── Pending Review Banner ──────────────────────────────────────── */}
+      {vendor.status === 'pending' && (
+        <div style={{
+          borderRadius: '1rem',
+          border: '1.5px solid rgba(217,119,6,0.25)',
+          background: 'linear-gradient(135deg, rgba(254,243,199,0.9) 0%, rgba(255,237,213,0.9) 100%)',
+          overflow: 'hidden',
+        }}>
+          <div style={{ padding: '0.875rem 1rem 0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+              <span style={{ fontSize: '1rem' }}>⏳</span>
+              <p style={{ fontFamily: 'Plus Jakarta Sans', fontWeight: 800, fontSize: '0.9375rem', color: '#92400E', margin: 0 }}>
+                Pending Approval
+              </p>
+            </div>
+            <p style={{ fontSize: '0.78rem', color: '#B45309', margin: 0 }}>
+              Review this vendor before approving them to list on VOOM Ghana.
+            </p>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', padding: '0.75rem 1rem 1rem' }}>
+            <button
+              disabled={statusUpdating}
+              onClick={() => handleStatusChange('rejected')}
+              style={{
+                padding: '0.7rem', borderRadius: '0.625rem',
+                border: '1.5px solid rgba(225,29,72,0.25)',
+                background: 'rgba(255,255,255,0.8)',
+                color: '#E11D48', fontWeight: 700, fontSize: '0.875rem',
+                cursor: statusUpdating ? 'not-allowed' : 'pointer',
+                fontFamily: 'Plus Jakarta Sans',
+                opacity: statusUpdating ? 0.6 : 1,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem',
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+              Reject
+            </button>
+            <button
+              disabled={statusUpdating}
+              onClick={() => handleStatusChange('approved')}
+              style={{
+                padding: '0.7rem', borderRadius: '0.625rem', border: 'none',
+                background: statusUpdating ? 'rgba(5,150,105,0.5)' : 'linear-gradient(135deg,#059669 0%,#10B981 100%)',
+                color: 'white', fontWeight: 700, fontSize: '0.875rem',
+                cursor: statusUpdating ? 'not-allowed' : 'pointer',
+                fontFamily: 'Plus Jakarta Sans',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem',
+                boxShadow: '0 2px 8px rgba(5,150,105,0.3)',
+              }}
+            >
+              {statusUpdating ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: 'spin 1s linear infinite' }}>
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              )}
+              {statusUpdating ? 'Updating…' : 'Approve'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Approved / Rejected confirmation banner ───────────────────── */}
+      {(vendor.status === 'approved' || vendor.status === 'rejected' || vendor.status === 'suspended') && (
+        <div style={{
+          padding: '0.625rem 0.875rem',
+          borderRadius: '0.75rem',
+          border: `1px solid ${STATUS_STYLES[vendor.status]?.color}33`,
+          background: STATUS_STYLES[vendor.status]?.bg,
+          display: 'flex', alignItems: 'center', gap: '0.5rem',
+        }}>
+          <div style={{ width: 7, height: 7, borderRadius: '50%', background: STATUS_STYLES[vendor.status]?.color, flexShrink: 0 }} />
+          <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: STATUS_STYLES[vendor.status]?.color }}>
+            {STATUS_STYLES[vendor.status]?.label}
+            {vendor.status === 'approved' ? ' — Active on VOOM Ghana' : vendor.status === 'rejected' ? ' — Not approved to list' : ' — Account suspended'}
+          </span>
+        </div>
+      )}
+
       {/* Vendor header card */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: '0.875rem',

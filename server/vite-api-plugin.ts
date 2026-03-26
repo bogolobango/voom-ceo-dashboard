@@ -497,8 +497,9 @@ export default function viteApiPlugin(): Plugin {
               `Welcome to VOOM Ghana! 🚗`
             );
             const whatsappUrl = `https://wa.me/${waNumber}?text=${inviteText}`;
+            const storedPhone = "+" + waNumber;
             const insertFields: Record<string, any> = {
-              businessName: cleanName, phone: cleanPhone, whatsapp: cleanPhone,
+              businessName: cleanName, phone: storedPhone, whatsapp: storedPhone,
               status: "pending", verified: false,
             };
             if (city && String(city).trim()) insertFields.city = String(city).trim();

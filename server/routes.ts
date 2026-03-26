@@ -1095,10 +1095,13 @@ router.post("/api/vendors/invite", async (req, res) => {
     );
     const whatsappUrl = `https://wa.me/${waNumber}?text=${inviteText}`;
 
+    // Always store in +233XXXXXXXXX format to satisfy DB pattern constraint
+    const storedPhone = "+" + waNumber;
+
     const insertFields: Record<string, any> = {
       businessName: cleanName,
-      phone: cleanPhone,
-      whatsapp: cleanPhone,
+      phone: storedPhone,
+      whatsapp: storedPhone,
       status: "pending",
       verified: false,
     };
