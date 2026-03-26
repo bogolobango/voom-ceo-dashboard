@@ -239,7 +239,7 @@ export default function viteApiPlugin(): Plugin {
             if (!sb || isNaN(userId)) return json(res, { source: "offline", data: null });
 
             const [{ data: userData }, { data: activityData }] = await Promise.all([
-              sb.from("users").select("*").eq("id", userId).single(),
+              sb.from("users").select("id, openId, name, email, phone, loginMethod, role, isVerified, createdAt, updatedAt, lastSignedIn").eq("id", userId).single(),
               sb.from("analytics_events")
                 .select("id, eventType, productId, metadata, createdAt")
                 .eq("userId", userId)
@@ -267,8 +267,9 @@ export default function viteApiPlugin(): Plugin {
           if (url === "/api/analytics/users" && req.method === "GET") {
             if (!sb) return json(res, { source: "offline", data: [] });
 
+            const SAFE_USER_COLS = "id, openId, name, email, phone, loginMethod, role, isVerified, createdAt, updatedAt, lastSignedIn";
             const [{ data: usersData }, { data: eventsData }] = await Promise.all([
-              sb.from("users").select("id, email, phone, name, firstName, lastName, city, region, profileImage, createdAt").order("createdAt", { ascending: false }),
+              sb.from("users").select(SAFE_USER_COLS).order("createdAt", { ascending: false }),
               sb.from("analytics_events").select("userId, eventType, createdAt").order("createdAt", { ascending: false }),
             ]);
 

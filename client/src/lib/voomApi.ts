@@ -242,15 +242,16 @@ export async function fetchBriefing(): Promise<BriefingData | null> {
 
 export interface AnalyticsUser {
   id: number;
+  openId: string | null;
+  name: string | null;
   email: string | null;
   phone: string | null;
-  name: string | null;
-  firstName: string | null;
-  lastName: string | null;
-  city: string | null;
-  region: string | null;
-  profileImage: string | null;
+  loginMethod: string | null;
+  role: string | null;
+  isVerified: boolean | null;
   createdAt: string;
+  updatedAt: string | null;
+  lastSignedIn: string | null;
   activityCounts: {
     views: number;
     searches: number;

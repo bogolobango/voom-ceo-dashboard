@@ -44,20 +44,16 @@ function formatCedi(price: string | null): string {
 
 function getDisplayName(user: AnalyticsUser): string {
   if (user.name) return user.name;
-  if (user.firstName && user.lastName) return `${user.firstName} ${user.lastName}`;
-  if (user.firstName) return user.firstName;
   if (user.email) return user.email.split('@')[0];
   return `User #${user.id}`;
 }
 
 function getInitials(user: AnalyticsUser): string {
-  const name = user.firstName && user.lastName
-    ? `${user.firstName} ${user.lastName}`
-    : user.name || user.email || '';
-  const parts = name.trim().split(' ').filter(Boolean);
+  const src = user.name || user.email || '';
+  const parts = src.trim().split(/[\s@]/).filter(Boolean);
   if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `U`;
+  return 'U';
 }
 
 // ─── Shared UI atoms ───
@@ -101,17 +97,14 @@ function LoadingRows() {
 // ─── Users Tab ───
 
 function UserAvatar({ user }: { user: AnalyticsUser }) {
-  const [imgError, setImgError] = useState(false);
   return (
     <div style={{
       width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
       background: 'linear-gradient(135deg, #4F46E5, #7C3AED)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: '0.7rem', fontWeight: 700, color: '#fff', overflow: 'hidden',
+      fontSize: '0.7rem', fontWeight: 700, color: '#fff',
     }}>
-      {user.profileImage && !imgError
-        ? <img src={user.profileImage} onError={() => setImgError(true)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
-        : getInitials(user)}
+      {getInitials(user)}
     </div>
   );
 }

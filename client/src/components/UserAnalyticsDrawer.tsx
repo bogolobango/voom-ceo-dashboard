@@ -16,16 +16,15 @@ function formatDate(iso: string) {
 }
 function getDisplayName(user: AnalyticsUser) {
   if (user.name) return user.name;
-  if (user.firstName && user.lastName) return `${user.firstName} ${user.lastName}`;
-  if (user.firstName) return user.firstName;
   if (user.email) return user.email.split('@')[0];
   return `User #${user.id}`;
 }
 function getInitials(user: AnalyticsUser) {
-  if (user.firstName && user.lastName) return `${user.firstName[0]}${user.lastName[0]}`.toUpperCase();
-  if (user.name) return user.name.slice(0, 2).toUpperCase();
-  if (user.email) return user.email[0].toUpperCase();
-  return '?';
+  const src = user.name || user.email || '';
+  const parts = src.trim().split(/[\s@]/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return 'U';
 }
 
 const EVENT_CONFIG: Record<string, { label: string; color: string; bg: string; emoji: string }> = {
@@ -110,11 +109,9 @@ export function UserAnalyticsDrawer({ userId, onClose }: Props) {
                   width: 56, height: 56, borderRadius: '50%', flexShrink: 0,
                   background: 'linear-gradient(135deg, #4F46E5, #7C3AED)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '1.125rem', fontWeight: 700, color: '#fff', overflow: 'hidden',
+                  fontSize: '1.125rem', fontWeight: 700, color: '#fff',
                 }}>
-                  {user.profileImage
-                    ? <img src={user.profileImage} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
-                    : getInitials(user)}
+                  {getInitials(user)}
                 </div>
                 <div>
                   <SheetTitle style={{ fontFamily: 'Plus Jakarta Sans', fontWeight: 700, fontSize: '1.125rem', margin: 0 }}>
@@ -129,7 +126,9 @@ export function UserAnalyticsDrawer({ userId, onClose }: Props) {
             <div style={{ background: 'rgba(79,70,229,0.04)', borderRadius: '1rem', padding: '1rem', border: '1px solid rgba(79,70,229,0.08)' }}>
               {[
                 { label: 'Phone', value: user.phone || '—' },
-                { label: 'Location', value: [user.city, user.region].filter(Boolean).join(', ') || '—' },
+                { label: 'Login method', value: user.loginMethod || '—' },
+                { label: 'Verified', value: user.isVerified ? 'Yes' : 'No' },
+                { label: 'Last sign-in', value: user.lastSignedIn ? formatDate(user.lastSignedIn) : '—' },
                 { label: 'Joined', value: formatDate(user.createdAt) },
                 { label: 'User ID', value: `#${user.id}` },
               ].map(({ label, value }) => (

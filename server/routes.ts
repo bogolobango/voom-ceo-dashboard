@@ -682,7 +682,7 @@ router.get("/api/analytics/users/:id", async (req, res) => {
 
   try {
     const [{ data: userData }, { data: activityData }] = await Promise.all([
-      supabase!.from("users").select("*").eq("id", userId).single(),
+      supabase!.from("users").select("id, openId, name, email, phone, loginMethod, role, isVerified, createdAt, updatedAt, lastSignedIn").eq("id", userId).single(),
       supabase!.from("analytics_events").select("id, eventType, productId, metadata, createdAt").eq("userId", userId).order("createdAt", { ascending: false }).limit(150),
     ]);
 
@@ -710,7 +710,7 @@ router.get("/api/analytics/users", async (_req, res) => {
   if (dbUnavailable(res)) return;
   try {
     const [{ data: usersData }, { data: eventsData }] = await Promise.all([
-      supabase!.from("users").select("id, email, phone, name, firstName, lastName, city, region, profileImage, createdAt").order("createdAt", { ascending: false }),
+      supabase!.from("users").select("id, openId, name, email, phone, loginMethod, role, isVerified, createdAt, updatedAt, lastSignedIn").order("createdAt", { ascending: false }),
       supabase!.from("analytics_events").select("userId, eventType, createdAt").order("createdAt", { ascending: false }),
     ]);
 
