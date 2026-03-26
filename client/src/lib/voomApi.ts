@@ -238,6 +238,75 @@ export async function fetchBriefing(): Promise<BriefingData | null> {
   };
 }
 
+// ─── Analytics Types ───
+
+export interface AnalyticsUser {
+  id: number;
+  email: string | null;
+  phone: string | null;
+  name: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  city: string | null;
+  region: string | null;
+  profileImage: string | null;
+  createdAt: string;
+  activityCounts: {
+    views: number;
+    searches: number;
+    waTaps: number;
+    total: number;
+    lastSeen: string | null;
+  };
+}
+
+export interface UserActivityEvent {
+  id: number;
+  eventType: string;
+  productId: number | null;
+  productName: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface ProductViewStat {
+  productId: number;
+  productName: string;
+  categoryId: number | null;
+  categoryName: string | null;
+  vendorId: number | null;
+  price: string | null;
+  imageUrl: string | null;
+  views: number;
+  uniqueViewers: number;
+  waTaps: number;
+  conversionRate: number;
+  lastViewed: string | null;
+}
+
+export interface ProductAnalyticsData {
+  timeRange: string;
+  funnel: { searches: number; views: number; waTaps: number; searchToView: number; viewToWA: number };
+  topProducts: ProductViewStat[];
+  deadStock: ProductViewStat[];
+  categoryTrends: { name: string; views: number; change: number }[];
+}
+
+export async function fetchAnalyticsUsers(): Promise<AnalyticsUser[]> {
+  const result = await apiGet<{ source: string; data: AnalyticsUser[] }>('/api/analytics/users');
+  return result?.data ?? [];
+}
+
+export async function fetchUserDetail(id: number): Promise<{ user: AnalyticsUser | null; activity: UserActivityEvent[] }> {
+  const result = await apiGet<{ source: string; data: { user: AnalyticsUser; activity: UserActivityEvent[] } }>(`/api/analytics/users/${id}`);
+  return result?.data ?? { user: null, activity: [] };
+}
+
+export async function fetchProductAnalytics(timeRange: '1d' | '7d' | '30d' | 'all'): Promise<ProductAnalyticsData | null> {
+  const result = await apiGet<{ source: string; data: ProductAnalyticsData }>(`/api/analytics/products?timeRange=${timeRange}`);
+  return result?.data ?? null;
+}
+
 // ─── Derived KPI Calculations ───
 export interface DashboardKPIs {
   totalVendors: number;

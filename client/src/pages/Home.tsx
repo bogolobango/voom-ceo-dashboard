@@ -20,6 +20,7 @@ import { MorningBriefing } from '../components/sections/MorningBriefing';
 import { VendorCRM } from '../components/sections/VendorCRM';
 import { Security } from '../components/sections/Security';
 import { CompetitiveIntel } from '../components/sections/CompetitiveIntel';
+import { Analytics } from '../components/sections/Analytics';
 import {
   fetchStats, fetchVendors, fetchOrders, fetchProducts,
   fetchPartRequests, fetchRevenue, fetchGrowth, fetchBriefing,
@@ -28,7 +29,7 @@ import {
 } from '../lib/voomApi';
 import { toast } from 'sonner';
 
-type Section = 'briefing' | 'overview' | 'vendors' | 'products' | 'orders' | 'revenue' | 'part-requests' | 'growth' | 'crm' | 'security' | 'competitive' | 'settings';
+type Section = 'briefing' | 'overview' | 'vendors' | 'products' | 'orders' | 'revenue' | 'part-requests' | 'growth' | 'crm' | 'security' | 'competitive' | 'analytics' | 'settings';
 
 const SECTION_LABELS: Record<Section, string> = {
   briefing: 'Morning Briefing',
@@ -42,6 +43,7 @@ const SECTION_LABELS: Record<Section, string> = {
   crm: 'Outreach CRM',
   security: 'Security',
   competitive: 'Competitive Intel',
+  analytics: 'Analytics',
   settings: 'Settings',
 };
 
@@ -214,6 +216,11 @@ export default function Home() {
       case 'competitive': return (
         <WidgetErrorBoundary fallbackTitle="Competitive Intel failed to load">
           <CompetitiveIntel vendors={vendors} kpis={kpis} />
+        </WidgetErrorBoundary>
+      );
+      case 'analytics': return (
+        <WidgetErrorBoundary fallbackTitle="Analytics failed to load">
+          <Analytics />
         </WidgetErrorBoundary>
       );
       default: return (

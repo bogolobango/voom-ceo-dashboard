@@ -673,6 +673,151 @@ router.get("/api/analytics-events", async (req, res) => {
   }
 });
 
+// ─── Analytics: Users ───────────────────────────────────────
+
+router.get("/api/analytics/users/:id", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  const userId = parseInt(req.params.id, 10);
+  if (isNaN(userId)) return res.status(400).json({ error: "Invalid user ID" });
+
+  try {
+    const [{ data: userData }, { data: activityData }] = await Promise.all([
+      supabase!.from("users").select("*").eq("id", userId).single(),
+      supabase!.from("analytics_events").select("id, eventType, productId, metadata, createdAt").eq("userId", userId).order("createdAt", { ascending: false }).limit(150),
+    ]);
+
+    const productIds = [...new Set(((activityData || []) as any[]).filter(e => e.productId).map(e => e.productId))];
+    const productNames: Record<number, string> = {};
+    if (productIds.length > 0) {
+      const { data: prods } = await supabase!.from("products").select("id, name").in("id", productIds);
+      for (const p of (prods || []) as any[]) productNames[p.id] = p.name;
+    }
+
+    const activity = ((activityData || []) as any[]).map(e => ({
+      id: e.id, eventType: e.eventType, productId: e.productId,
+      productName: e.productId ? (productNames[e.productId] || null) : null,
+      metadata: e.metadata, createdAt: e.createdAt,
+    }));
+
+    res.json({ source: "database", data: { user: userData, activity } });
+  } catch (error) {
+    safeLogError("User detail query error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+router.get("/api/analytics/users", async (_req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const [{ data: usersData }, { data: eventsData }] = await Promise.all([
+      supabase!.from("users").select("id, email, phone, name, firstName, lastName, city, region, profileImage, createdAt").order("createdAt", { ascending: false }),
+      supabase!.from("analytics_events").select("userId, eventType, createdAt").order("createdAt", { ascending: false }),
+    ]);
+
+    const userActivity = new Map<number, { views: number; searches: number; waTaps: number; total: number; lastSeen: string | null }>();
+    for (const evt of (eventsData || []) as any[]) {
+      if (!evt.userId) continue;
+      if (!userActivity.has(evt.userId)) userActivity.set(evt.userId, { views: 0, searches: 0, waTaps: 0, total: 0, lastSeen: null });
+      const u = userActivity.get(evt.userId)!;
+      u.total++;
+      if (!u.lastSeen || evt.createdAt > u.lastSeen) u.lastSeen = evt.createdAt;
+      if (evt.eventType === "product_view") u.views++;
+      else if (evt.eventType === "search") u.searches++;
+      else if (evt.eventType === "whatsapp_tap") u.waTaps++;
+    }
+
+    const users = ((usersData || []) as any[]).map(u => ({
+      ...u,
+      activityCounts: userActivity.get(u.id) || { views: 0, searches: 0, waTaps: 0, total: 0, lastSeen: null },
+    }));
+
+    res.json({ source: "database", data: users });
+  } catch (error) {
+    safeLogError("Analytics users query error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+// ─── Analytics: Products ────────────────────────────────────
+
+router.get("/api/analytics/products", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  const timeRange = (req.query.timeRange as string) || "30d";
+  const now = new Date();
+  let startDate: string | null = null;
+  if (timeRange === "1d") startDate = new Date(now.getTime() - 86400000).toISOString();
+  else if (timeRange === "7d") startDate = new Date(now.getTime() - 7 * 86400000).toISOString();
+  else if (timeRange === "30d") startDate = new Date(now.getTime() - 30 * 86400000).toISOString();
+
+  try {
+    const buildQ = (et: string) => {
+      let q = supabase!.from("analytics_events").select("id, userId, productId, eventType, metadata, createdAt").eq("eventType", et);
+      if (startDate) q = q.gte("createdAt", startDate);
+      return q;
+    };
+
+    const [{ data: viewEvents }, { data: searchEvents }, { data: waTapEvents }, { data: allProducts }] = await Promise.all([
+      buildQ("product_view"), buildQ("search"), buildQ("whatsapp_tap"),
+      supabase!.from("products").select("id, name, price, imageUrl, categoryId, vendorId, status").limit(500),
+    ]);
+
+    const productViewCounts = new Map<number, { views: number; lastViewed: string | null; viewers: Set<number> }>();
+    for (const evt of (viewEvents || []) as any[]) {
+      if (!evt.productId) continue;
+      if (!productViewCounts.has(evt.productId)) productViewCounts.set(evt.productId, { views: 0, lastViewed: null, viewers: new Set() });
+      const p = productViewCounts.get(evt.productId)!;
+      p.views++;
+      if (!p.lastViewed || evt.createdAt > p.lastViewed) p.lastViewed = evt.createdAt;
+      if (evt.userId) p.viewers.add(evt.userId);
+    }
+    const productWaTaps = new Map<number, number>();
+    for (const evt of (waTapEvents || []) as any[]) {
+      if (evt.productId) productWaTaps.set(evt.productId, (productWaTaps.get(evt.productId) || 0) + 1);
+    }
+
+    const catIds = [...new Set(((allProducts || []) as any[]).filter(p => p.categoryId).map(p => p.categoryId))];
+    const catNames: Record<number, string> = {};
+    if (catIds.length > 0) {
+      const { data: catsData } = await supabase!.from("categories").select("id, name").in("id", catIds);
+      for (const c of (catsData || []) as any[]) catNames[c.id] = c.name;
+    }
+
+    const productMap = new Map<number, any>();
+    for (const p of (allProducts || []) as any[]) productMap.set(p.id, { ...p, categoryName: p.categoryId ? (catNames[p.categoryId] || null) : null });
+
+    const topProducts = [...productViewCounts.entries()].sort((a, b) => b[1].views - a[1].views).slice(0, 20)
+      .map(([productId, stats]) => {
+        const p = productMap.get(productId);
+        const waTaps = productWaTaps.get(productId) || 0;
+        return { productId, productName: p?.name || `Product ${productId}`, categoryId: p?.categoryId || null, categoryName: p?.categoryName || null, vendorId: p?.vendorId || null, price: p?.price || null, imageUrl: p?.imageUrl || null, views: stats.views, uniqueViewers: stats.viewers.size, waTaps, conversionRate: stats.views > 0 ? waTaps / stats.views : 0, lastViewed: stats.lastViewed };
+      });
+
+    const viewedIds = new Set(productViewCounts.keys());
+    const deadStock = ((allProducts || []) as any[]).filter(p => !viewedIds.has(p.id) && p.status !== "deleted").slice(0, 20)
+      .map(p => ({ productId: p.id, productName: p.name, categoryId: p.categoryId, categoryName: p.categoryId ? (catNames[p.categoryId] || null) : null, vendorId: p.vendorId, price: p.price, imageUrl: p.imageUrl, views: 0, uniqueViewers: 0, waTaps: 0, conversionRate: 0, lastViewed: null }));
+
+    const catViewCounts = new Map<number, number>();
+    for (const [productId, stats] of productViewCounts) {
+      const p = productMap.get(productId);
+      if (p?.categoryId) catViewCounts.set(p.categoryId, (catViewCounts.get(p.categoryId) || 0) + stats.views);
+    }
+    const categoryTrends = [...catViewCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8)
+      .map(([catId, views]) => ({ name: catNames[catId] || `Category ${catId}`, views, change: 0 }));
+
+    res.json({
+      source: "database",
+      data: {
+        timeRange,
+        funnel: { searches: (searchEvents || []).length, views: (viewEvents || []).length, waTaps: (waTapEvents || []).length, searchToView: (searchEvents || []).length > 0 ? (viewEvents || []).length / (searchEvents || []).length : 0, viewToWA: (viewEvents || []).length > 0 ? (waTapEvents || []).length / (viewEvents || []).length : 0 },
+        topProducts, deadStock, categoryTrends,
+      },
+    });
+  } catch (error) {
+    safeLogError("Analytics products query error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
 // ─── Vendor Health ──────────────────────────────────────────
 
 router.get("/api/vendor-health", async (_req, res) => {
