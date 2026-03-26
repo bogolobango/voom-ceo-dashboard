@@ -289,7 +289,7 @@ export default function Home() {
           justifyContent: 'space-between',
           gap: '0.75rem',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', minWidth: 0, flex: 1 }}>
             {isMobile && (
               <button
                 onClick={() => setSidebarOpen(true)}
@@ -308,22 +308,6 @@ export default function Home() {
                 </svg>
               </button>
             )}
-            {isMobile && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <div style={{
-                  width: 28, height: 28, borderRadius: '0.5rem',
-                  background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                    <path d="M12 2L4 7v10l8 5 8-5V7L12 2z" fill="rgba(255,255,255,0.9)" />
-                  </svg>
-                </div>
-                <span style={{ fontFamily: 'Plus Jakarta Sans', fontWeight: 800, fontSize: '0.9375rem', color: '#0F172A' }}>
-                  VOOM
-                </span>
-              </div>
-            )}
             {!isMobile && (
               <div>
                 <h1 style={{ fontFamily: 'Plus Jakarta Sans', fontSize: '1rem', fontWeight: 700, color: '#0F172A', margin: 0 }}>
@@ -335,7 +319,11 @@ export default function Home() {
               </div>
             )}
             {isMobile && (
-              <h1 style={{ fontFamily: 'Plus Jakarta Sans', fontSize: '0.9rem', fontWeight: 700, color: '#0F172A', margin: 0, marginLeft: '0.25rem' }}>
+              <h1 style={{
+                fontFamily: 'Plus Jakarta Sans', fontSize: '1rem', fontWeight: 700,
+                color: '#0F172A', margin: 0,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>
                 {SECTION_LABELS[activeSection]}
               </h1>
             )}
