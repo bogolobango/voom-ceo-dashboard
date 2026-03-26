@@ -512,7 +512,9 @@ router.get("/api/briefing", async (_req, res) => {
     const sevenDaysFromNow = new Date(now.getTime() + 7 * 86400000).toISOString();
     const nowISO = now.toISOString();
 
-    // All 13 independent queries in a single Promise.all (was 3 sequential batches)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    // All queries in a single Promise.all for minimum latency
     const [
       { count: todaySearches },
       { count: todayWhatsappTaps },
@@ -527,6 +529,10 @@ router.get("/api/briefing", async (_req, res) => {
       { data: recentSearchEvents },
       { data: expiringVendorsRaw },
       { data: paidVendorsRaw },
+      { count: todayNewUsers },
+      { count: totalUsers },
+      { count: yesterdayNewUsers },
+      { data: productViewEvents },
     ] = await Promise.all([
       supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "search").gte("createdAt", todayStart),
       supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "whatsapp_tap").gte("createdAt", todayStart),
@@ -541,6 +547,10 @@ router.get("/api/briefing", async (_req, res) => {
       supabase!.from("analytics_events").select("metadata").eq("eventType", "search").gte("createdAt", twentyFourHoursAgo),
       supabase!.from("vendors").select("id, businessName, tier, tierExpiresAt").neq("tier", "free").gte("tierExpiresAt", nowISO).lte("tierExpiresAt", sevenDaysFromNow),
       supabase!.from("vendors").select("tier, tierExpiresAt").neq("tier", "free"),
+      supabase!.from("users").select("*", { count: "exact", head: true }).gte("createdAt", todayStart),
+      supabase!.from("users").select("*", { count: "exact", head: true }),
+      supabase!.from("users").select("*", { count: "exact", head: true }).gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
+      supabase!.from("analytics_events").select("productId").eq("eventType", "product_view").gte("createdAt", thirtyDaysAgo).not("productId", "is", null),
     ]);
 
     // Process search events
@@ -583,6 +593,32 @@ router.get("/api/briefing", async (_req, res) => {
       }
     }
 
+    // Top product categories by 30-day views
+    let topCategories: { name: string; views: number }[] = [];
+    const productIdCounts = new Map<number, number>();
+    for (const evt of productViewEvents || []) {
+      const pid = (evt as any).productId;
+      if (pid) productIdCounts.set(pid, (productIdCounts.get(pid) || 0) + 1);
+    }
+    const topProductIds = [...productIdCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 30).map(([id]) => id);
+    if (topProductIds.length > 0) {
+      const { data: productsData } = await supabase!.from("products").select("id, categoryId").in("id", topProductIds);
+      if (productsData && productsData.length > 0) {
+        const catCounts = new Map<number, number>();
+        for (const p of productsData as any[]) {
+          if (p.categoryId) catCounts.set(p.categoryId, (catCounts.get(p.categoryId) || 0) + (productIdCounts.get(p.id) || 0));
+        }
+        const topCatIds = [...catCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([id]) => id);
+        if (topCatIds.length > 0) {
+          const { data: catsData } = await supabase!.from("categories").select("id, name").in("id", topCatIds);
+          topCategories = topCatIds.map(id => ({
+            name: (catsData as any[])?.find((c) => c.id === id)?.name || `Category ${id}`,
+            views: catCounts.get(id) || 0,
+          }));
+        }
+      }
+    }
+
     const result = {
       source: "database",
       data: {
@@ -596,11 +632,15 @@ router.get("/api/briefing", async (_req, res) => {
         yesterdayProductViews: yesterdayProductViews ?? 0,
         yesterdayNewVendors: yesterdayNewVendors ?? 0,
         yesterdayPartRequests: yesterdayPartRequests ?? 0,
+        todayNewUsers: todayNewUsers ?? 0,
+        yesterdayNewUsers: yesterdayNewUsers ?? 0,
+        totalUsers: totalUsers ?? 0,
         topSearches,
         zeroResultSearches,
         expiringVendors,
         activePaidVendors,
         mrr,
+        topCategories,
       },
     };
     cache.set(CACHE_KEYS.briefing, result, 300);

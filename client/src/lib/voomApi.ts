@@ -129,11 +129,15 @@ export interface BriefingData {
   yesterdayNewVendors: number;
   todayPartRequests: number;
   yesterdayPartRequests: number;
+  todayNewUsers: number;
+  yesterdayNewUsers: number;
+  totalUsers: number;
   topSearches: { query: string; count: number; results: number }[];
   zeroResultSearches: { query: string; count: number }[];
   expiringVendors: { id: number; businessName: string; tier: string; tierExpiresAt: string }[];
   activePaidVendors: number;
   mrr: number;
+  topCategories: { name: string; views: number }[];
 }
 
 // ─── API fetch helper ───
@@ -227,8 +231,10 @@ export async function fetchBriefing(): Promise<BriefingData | null> {
     todayProductViews: 0, yesterdayProductViews: 0,
     todayNewVendors: 0, yesterdayNewVendors: 0,
     todayPartRequests: 0, yesterdayPartRequests: 0,
+    todayNewUsers: 0, yesterdayNewUsers: 0, totalUsers: 0,
     topSearches: [], zeroResultSearches: [],
     expiringVendors: [], activePaidVendors: 0, mrr: 0,
+    topCategories: [],
   };
 }
 

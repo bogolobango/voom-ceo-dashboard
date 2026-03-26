@@ -99,6 +99,140 @@ export default function viteApiPlugin(): Plugin {
             });
           }
 
+          // ─── /api/briefing ───
+          if (url === "/api/briefing" && req.method === "GET") {
+            if (!sb) return json(res, { source: "offline", data: { todaySearches: 0, yesterdaySearches: 0, todayWhatsappTaps: 0, yesterdayWhatsappTaps: 0, todayProductViews: 0, yesterdayProductViews: 0, todayNewVendors: 0, yesterdayNewVendors: 0, todayPartRequests: 0, yesterdayPartRequests: 0, todayNewUsers: 0, yesterdayNewUsers: 0, totalUsers: 0, topSearches: [], zeroResultSearches: [], expiringVendors: [], activePaidVendors: 0, mrr: 0, topCategories: [] } });
+
+            const TIER_PRICES: Record<string, number> = { starter: 100, pro: 200, business: 800, enterprise: 2000 };
+            const now = new Date();
+            const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+            const yesterdayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - 86400000).toISOString();
+            const twentyFourHoursAgo = new Date(now.getTime() - 86400000).toISOString();
+            const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000).toISOString();
+            const sevenDaysFromNow = new Date(now.getTime() + 7 * 86400000).toISOString();
+            const nowISO = now.toISOString();
+
+            const [
+              { count: todaySearches },
+              { count: todayWhatsappTaps },
+              { count: todayProductViews },
+              { count: todayNewVendors },
+              { count: todayPartRequests },
+              { count: yesterdaySearches },
+              { count: yesterdayWhatsappTaps },
+              { count: yesterdayProductViews },
+              { count: yesterdayNewVendors },
+              { count: yesterdayPartRequests },
+              { data: recentSearchEvents },
+              { data: expiringVendorsRaw },
+              { data: paidVendorsRaw },
+              { count: todayNewUsers },
+              { count: totalUsers },
+              { count: yesterdayNewUsers },
+              { data: productViewEvents },
+            ] = await Promise.all([
+              sb.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "search").gte("createdAt", todayStart),
+              sb.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "whatsapp_tap").gte("createdAt", todayStart),
+              sb.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "product_view").gte("createdAt", todayStart),
+              sb.from("vendors").select("*", { count: "exact", head: true }).gte("createdAt", todayStart),
+              sb.from("part_requests").select("*", { count: "exact", head: true }).gte("createdAt", todayStart),
+              sb.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "search").gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
+              sb.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "whatsapp_tap").gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
+              sb.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "product_view").gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
+              sb.from("vendors").select("*", { count: "exact", head: true }).gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
+              sb.from("part_requests").select("*", { count: "exact", head: true }).gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
+              sb.from("analytics_events").select("metadata").eq("eventType", "search").gte("createdAt", twentyFourHoursAgo),
+              sb.from("vendors").select("id, businessName, tier, tierExpiresAt").neq("tier", "free").gte("tierExpiresAt", nowISO).lte("tierExpiresAt", sevenDaysFromNow),
+              sb.from("vendors").select("tier, tierExpiresAt").neq("tier", "free"),
+              sb.from("users").select("*", { count: "exact", head: true }).gte("createdAt", todayStart),
+              sb.from("users").select("*", { count: "exact", head: true }),
+              sb.from("users").select("*", { count: "exact", head: true }).gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
+              sb.from("analytics_events").select("productId").eq("eventType", "product_view").gte("createdAt", thirtyDaysAgo).not("productId", "is", null),
+            ]);
+
+            // Build top searches from search metadata
+            const queryCountMap = new Map<string, number>();
+            const queryResultMap = new Map<string, number>();
+            const zeroResultMap = new Map<string, number>();
+            for (const evt of (recentSearchEvents || []) as any[]) {
+              const meta = evt.metadata as Record<string, unknown> | null;
+              if (!meta) continue;
+              const query = meta.query as string | undefined;
+              if (!query) continue;
+              queryCountMap.set(query, (queryCountMap.get(query) || 0) + 1);
+              const resultCount = ((meta.resultsCount ?? meta.resultCount ?? 0) as number);
+              queryResultMap.set(query, resultCount);
+              if (resultCount === 0) zeroResultMap.set(query, (zeroResultMap.get(query) || 0) + 1);
+            }
+            const topSearches = [...queryCountMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10)
+              .map(([query, count]) => ({ query, count, results: queryResultMap.get(query) ?? 0 }));
+            const zeroResultSearches = [...zeroResultMap.entries()].sort((a, b) => b[1] - a[1])
+              .map(([query, count]) => ({ query, count }));
+
+            // Expiring vendors
+            const expiringVendors = ((expiringVendorsRaw || []) as any[]).map((v) => ({ id: v.id, businessName: v.businessName, tier: v.tier, tierExpiresAt: v.tierExpiresAt }));
+
+            // MRR calculation
+            let activePaidVendors = 0;
+            let mrr = 0;
+            for (const v of (paidVendorsRaw || []) as any[]) {
+              if (!v.tierExpiresAt || v.tierExpiresAt > nowISO) {
+                activePaidVendors++;
+                mrr += TIER_PRICES[v.tier] || 0;
+              }
+            }
+
+            // Top product categories by 30-day views
+            let topCategories: { name: string; views: number }[] = [];
+            const productIdCounts = new Map<number, number>();
+            for (const evt of (productViewEvents || []) as any[]) {
+              if (evt.productId) productIdCounts.set(evt.productId, (productIdCounts.get(evt.productId) || 0) + 1);
+            }
+            const topProductIds = [...productIdCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 30).map(([id]) => id);
+            if (topProductIds.length > 0) {
+              const { data: productsData } = await sb.from("products").select("id, categoryId").in("id", topProductIds);
+              if (productsData && productsData.length > 0) {
+                const catCounts = new Map<number, number>();
+                for (const p of productsData as any[]) {
+                  if (p.categoryId) catCounts.set(p.categoryId, (catCounts.get(p.categoryId) || 0) + (productIdCounts.get(p.id) || 0));
+                }
+                const topCatIds = [...catCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([id]) => id);
+                if (topCatIds.length > 0) {
+                  const { data: catsData } = await sb.from("categories").select("id, name").in("id", topCatIds);
+                  topCategories = topCatIds.map(id => ({
+                    name: (catsData as any[])?.find((c) => c.id === id)?.name || `Category ${id}`,
+                    views: catCounts.get(id) || 0,
+                  }));
+                }
+              }
+            }
+
+            return json(res, {
+              source: "database",
+              data: {
+                todaySearches: todaySearches ?? 0,
+                todayWhatsappTaps: todayWhatsappTaps ?? 0,
+                todayProductViews: todayProductViews ?? 0,
+                todayNewVendors: todayNewVendors ?? 0,
+                todayPartRequests: todayPartRequests ?? 0,
+                yesterdaySearches: yesterdaySearches ?? 0,
+                yesterdayWhatsappTaps: yesterdayWhatsappTaps ?? 0,
+                yesterdayProductViews: yesterdayProductViews ?? 0,
+                yesterdayNewVendors: yesterdayNewVendors ?? 0,
+                yesterdayPartRequests: yesterdayPartRequests ?? 0,
+                todayNewUsers: todayNewUsers ?? 0,
+                yesterdayNewUsers: yesterdayNewUsers ?? 0,
+                totalUsers: totalUsers ?? 0,
+                topSearches,
+                zeroResultSearches,
+                expiringVendors,
+                activePaidVendors,
+                mrr,
+                topCategories,
+              },
+            });
+          }
+
           // ─── /api/vendors ───
           if (url === "/api/vendors") {
             if (!sb) return json(res, { source: "offline", data: [] });

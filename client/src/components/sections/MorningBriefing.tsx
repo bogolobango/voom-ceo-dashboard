@@ -91,8 +91,9 @@ export function MorningBriefing({ briefingData, vendors, kpis }: MorningBriefing
     todayProductViews, yesterdayProductViews,
     todayNewVendors, yesterdayNewVendors,
     todayPartRequests, yesterdayPartRequests,
+    todayNewUsers, yesterdayNewUsers, totalUsers,
     topSearches, zeroResultSearches, expiringVendors,
-    activePaidVendors, mrr,
+    activePaidVendors, mrr, topCategories,
   } = briefingData;
 
   const mrrUsd = useMemo(() => mrr / USD_RATE, [mrr]);
@@ -159,9 +160,10 @@ export function MorningBriefing({ briefingData, vendors, kpis }: MorningBriefing
     { label: 'Searches', today: todaySearches, yesterday: yesterdaySearches },
     { label: 'Product Views', today: todayProductViews, yesterday: yesterdayProductViews },
     { label: 'WhatsApp Taps', today: todayWhatsappTaps, yesterday: yesterdayWhatsappTaps },
+    { label: 'New Users', today: todayNewUsers, yesterday: yesterdayNewUsers },
     { label: 'New Vendors', today: todayNewVendors, yesterday: yesterdayNewVendors },
     { label: 'Part Requests', today: todayPartRequests, yesterday: yesterdayPartRequests },
-  ], [todaySearches, yesterdaySearches, todayProductViews, yesterdayProductViews, todayWhatsappTaps, yesterdayWhatsappTaps, todayNewVendors, yesterdayNewVendors, todayPartRequests, yesterdayPartRequests]);
+  ], [todaySearches, yesterdaySearches, todayProductViews, yesterdayProductViews, todayWhatsappTaps, yesterdayWhatsappTaps, todayNewUsers, yesterdayNewUsers, todayNewVendors, yesterdayNewVendors, todayPartRequests, yesterdayPartRequests]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -179,10 +181,10 @@ export function MorningBriefing({ briefingData, vendors, kpis }: MorningBriefing
         }}>
           {[
             { label: "Today's Searches", value: todaySearches, prev: yesterdaySearches },
+            { label: "Product Views", value: todayProductViews, prev: yesterdayProductViews },
             { label: "WhatsApp Taps", value: todayWhatsappTaps, prev: yesterdayWhatsappTaps },
-            { label: "Active Paid Vendors", value: activePaidVendors, prev: undefined },
+            { label: "New Users", value: todayNewUsers, prev: yesterdayNewUsers },
             { label: "MRR (GH₵)", value: mrr, prev: undefined, prefix: 'GH₵ ' },
-            { label: "MRR (USD)", value: mrrUsd, prev: undefined, prefix: '$ ' },
           ].map((item, i) => (
             <div key={i} style={{
               flex: '1 1 120px',
@@ -461,6 +463,88 @@ export function MorningBriefing({ briefingData, vendors, kpis }: MorningBriefing
                 </p>
               </div>
             </div>
+          </div>
+        </GlassSection>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          5. TOP PRODUCT CATEGORIES + USER GROWTH (side by side)
+         ═══════════════════════════════════════════════════════ */}
+      <div className="two-col-grid">
+
+        {/* ── Top Product Categories (30-day views) ── */}
+        <GlassSection>
+          <SectionTitle sub="Most viewed categories last 30 days">Category Traffic</SectionTitle>
+          {topCategories.length === 0 ? (
+            <p style={{ fontSize: '0.78rem', color: '#94A3B8' }}>No category view data yet.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {(() => {
+                const maxViews = Math.max(...topCategories.map(c => c.views), 1);
+                return topCategories.map((cat, i) => {
+                  const pct = Math.round((cat.views / maxViews) * 100);
+                  const catColors = ['#4F46E5','#7C3AED','#0EA5E9','#059669','#D97706','#E11D48'];
+                  const color = catColors[i % catColors.length];
+                  return (
+                    <div key={i}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 500, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }}>
+                          {cat.name}
+                        </span>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color, fontFamily: 'Space Grotesk', flexShrink: 0, marginLeft: '0.5rem' }}>
+                          {cat.views} view{cat.views !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      <div style={{ height: 6, borderRadius: 999, background: 'rgba(79,70,229,0.06)', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${pct}%`, borderRadius: 999, background: color, transition: 'width 0.8s ease' }} />
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          )}
+        </GlassSection>
+
+        {/* ── User Growth ── */}
+        <GlassSection>
+          <SectionTitle sub="Registered users on voomparts.com">User Growth</SectionTitle>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div style={{
+              padding: '0.875rem', borderRadius: '0.875rem',
+              background: 'linear-gradient(135deg, rgba(79,70,229,0.06) 0%, rgba(124,58,237,0.04) 100%)',
+              border: '1px solid rgba(79,70,229,0.08)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <div>
+                <p style={{ fontSize: '0.68rem', color: '#94A3B8', margin: 0, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total Users</p>
+                <p style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0F172A', fontFamily: 'Space Grotesk', margin: '0.125rem 0 0', lineHeight: 1 }}>
+                  {formatNumber(totalUsers)}
+                </p>
+              </div>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(79,70,229,0.3)" strokeWidth="1.5">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+            </div>
+            {[
+              { label: 'New today', value: todayNewUsers, prev: yesterdayNewUsers, color: '#4F46E5' },
+              { label: 'New yesterday', value: yesterdayNewUsers, prev: undefined, color: '#94A3B8' },
+            ].map((row, i) => (
+              <div key={i} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '0.5rem 0.625rem', borderRadius: '0.625rem',
+                background: i === 0 ? 'rgba(248,250,252,0.8)' : 'transparent',
+              }}>
+                <span style={{ fontSize: '0.8rem', color: '#64748B' }}>{row.label}</span>
+                <span style={{ fontSize: '0.875rem', fontWeight: 700, color: row.color, fontFamily: 'Space Grotesk' }}>
+                  +{row.value}
+                  {row.prev !== undefined && <TrendArrow current={row.value} previous={row.prev} />}
+                </span>
+              </div>
+            ))}
           </div>
         </GlassSection>
       </div>
