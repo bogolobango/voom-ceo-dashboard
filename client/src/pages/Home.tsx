@@ -173,7 +173,7 @@ export default function Home() {
       );
       case 'vendors': return (
         <WidgetErrorBoundary fallbackTitle="Vendors failed to load">
-          <Vendors vendors={vendors} />
+          <Vendors vendors={vendors} onRefresh={handleRefresh} />
         </WidgetErrorBoundary>
       );
       case 'products': return (

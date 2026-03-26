@@ -476,6 +476,37 @@ export default function viteApiPlugin(): Plugin {
             return json(res, data);
           }
 
+          // ─── /api/vendors/invite (POST) ───
+          if (url === "/api/vendors/invite" && req.method === "POST") {
+            if (!sb) return json(res, { error: "Database not available" }, 503);
+            const body = await parseBody(req);
+            const { businessName, phone, city } = body;
+            if (!businessName || !phone) return json(res, { error: "businessName and phone are required" }, 400);
+            const cleanPhone = String(phone).trim();
+            const cleanName = String(businessName).trim();
+            const digitsOnly = cleanPhone.replace(/[\s\-\(\)+]/g, "");
+            let waNumber = digitsOnly;
+            if (digitsOnly.startsWith("233")) waNumber = digitsOnly;
+            else if (digitsOnly.startsWith("0") && digitsOnly.length === 10) waNumber = "233" + digitsOnly.slice(1);
+            else if (digitsOnly.length === 9) waNumber = "233" + digitsOnly;
+            const inviteText = encodeURIComponent(
+              `Hello! 👋 You've been invited to join VOOM Ghana as a verified auto-parts vendor.\n\n` +
+              `Business: *${cleanName}*\n\n` +
+              `Your account has been created and is pending activation. ` +
+              `Our team will contact you within 24 hours to complete your onboarding.\n\n` +
+              `Welcome to VOOM Ghana! 🚗`
+            );
+            const whatsappUrl = `https://wa.me/${waNumber}?text=${inviteText}`;
+            const insertFields: Record<string, any> = {
+              businessName: cleanName, phone: cleanPhone, whatsapp: cleanPhone,
+              status: "pending", verified: false,
+            };
+            if (city && String(city).trim()) insertFields.city = String(city).trim();
+            const { data, error } = await sb.from("vendors").insert(insertFields).select().single();
+            if (error) return json(res, { error: "Failed to create vendor record" }, 500);
+            return json(res, { vendor: data, whatsappUrl }, 201);
+          }
+
           // ─── /api/vendors/:id/notifications (POST) ───
           const vendorNotifPostMatch = url.match(/^\/api\/vendors\/(\d+)\/notifications$/);
           if (vendorNotifPostMatch && req.method === "POST") {

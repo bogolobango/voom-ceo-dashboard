@@ -6,9 +6,11 @@
 import { useState, useMemo } from 'react';
 import type { Vendor } from '../../lib/voomApi';
 import { VendorDetailDrawer } from '../VendorDetailDrawer';
+import { InviteVendorModal } from '../InviteVendorModal';
 
 interface VendorsProps {
   vendors: Vendor[];
+  onRefresh?: () => void;
 }
 
 const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
@@ -18,11 +20,12 @@ const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }
   suspended: { bg: 'rgba(100,116,139,0.1)', color: '#64748B', label: 'Suspended' },
 };
 
-export function Vendors({ vendors }: VendorsProps) {
+export function Vendors({ vendors, onRefresh }: VendorsProps) {
   const [filter, setFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [selectedVendorId, setSelectedVendorId] = useState<number | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const filtered = useMemo(() => vendors.filter(v => {
     const matchStatus = filter === 'all' || v.status === filter;
@@ -50,17 +53,28 @@ export function Vendors({ vendors }: VendorsProps) {
             {counts.approved} active · {counts.pending} awaiting approval
           </p>
         </div>
-        <div style={{
-          padding: '0.5rem 1rem',
-          borderRadius: '0.75rem',
-          background: 'rgba(79,70,229,0.1)',
-          color: '#4F46E5',
-          fontSize: '0.8125rem',
-          fontWeight: 600,
-          cursor: 'pointer',
-        }}>
-          + Invite Vendor
-        </div>
+        <button
+          onClick={() => setInviteOpen(true)}
+          style={{
+            padding: '0.5rem 1rem',
+            borderRadius: '0.75rem',
+            background: 'linear-gradient(135deg,#4F46E5 0%,#7C3AED 100%)',
+            color: 'white',
+            fontSize: '0.8125rem',
+            fontWeight: 700,
+            cursor: 'pointer',
+            border: 'none',
+            fontFamily: 'Plus Jakarta Sans',
+            display: 'flex', alignItems: 'center', gap: '0.375rem',
+            boxShadow: '0 2px 8px rgba(79,70,229,0.25)',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Invite Vendor
+        </button>
       </div>
 
       {/* Status Filter Tabs */}
@@ -219,6 +233,12 @@ export function Vendors({ vendors }: VendorsProps) {
         vendorId={selectedVendorId}
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
+      />
+
+      <InviteVendorModal
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        onInvited={() => { onRefresh?.(); }}
       />
     </div>
   );

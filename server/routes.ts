@@ -1064,4 +1064,65 @@ router.post("/api/vendors/:id/notifications", async (req, res) => {
   }
 });
 
+// ─── POST /api/vendors/invite ───────────────────────────────────────────────
+router.post("/api/vendors/invite", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const { businessName, phone, city } = req.body;
+    if (!businessName || typeof businessName !== "string" || businessName.trim().length === 0) {
+      return res.status(400).json({ error: "businessName is required" });
+    }
+    if (!phone || typeof phone !== "string" || phone.trim().length === 0) {
+      return res.status(400).json({ error: "phone is required" });
+    }
+
+    const cleanPhone = phone.trim();
+    const cleanName = businessName.trim();
+
+    // Format phone to international WhatsApp format (Ghana)
+    const digitsOnly = cleanPhone.replace(/[\s\-\(\)+]/g, "");
+    let waNumber = digitsOnly;
+    if (digitsOnly.startsWith("233")) waNumber = digitsOnly;
+    else if (digitsOnly.startsWith("0") && digitsOnly.length === 10) waNumber = "233" + digitsOnly.slice(1);
+    else if (digitsOnly.length === 9) waNumber = "233" + digitsOnly;
+
+    const inviteText = encodeURIComponent(
+      `Hello! 👋 You've been invited to join VOOM Ghana as a verified auto-parts vendor.\n\n` +
+      `Business: *${cleanName}*\n\n` +
+      `Your account has been created and is pending activation. ` +
+      `Our team will contact you within 24 hours to complete your onboarding.\n\n` +
+      `Welcome to VOOM Ghana! 🚗`
+    );
+    const whatsappUrl = `https://wa.me/${waNumber}?text=${inviteText}`;
+
+    const insertFields: Record<string, any> = {
+      businessName: cleanName,
+      phone: cleanPhone,
+      whatsapp: cleanPhone,
+      status: "pending",
+      verified: false,
+    };
+    if (city && typeof city === "string" && city.trim()) {
+      insertFields.city = city.trim();
+    }
+
+    const { data, error } = await supabase!
+      .from("vendors")
+      .insert(insertFields)
+      .select()
+      .single();
+
+    if (error) {
+      safeLogError("Vendor invite insert error", error);
+      return res.status(500).json({ error: "Failed to create vendor record" });
+    }
+
+    return res.status(201).json({ vendor: data, whatsappUrl });
+  } catch (error) {
+    safeLogError("Vendor invite error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
 export default router;
+
