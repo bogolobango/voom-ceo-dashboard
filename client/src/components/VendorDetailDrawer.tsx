@@ -18,7 +18,7 @@ import {
   fetchVendorDetail, fetchVendorOrders, fetchVendorPayouts,
   fetchVendorNotifications, fetchVendorSubscriptionEvents,
   updateVendorStatus, updateVendorTier, updateVendorFeatured,
-  sendVendorNotification, fetchAnalyticsUsers, verifyUser, updateUserRole,
+  sendVendorNotification, fetchAnalyticsUsers, verifyUser, updateUserRole, reviewVendorDocs,
 } from '../lib/voomApi';
 
 // ─── Status / Tier Helpers ───
@@ -476,6 +476,21 @@ function OverviewTab({ vendor }: { vendor: VendorDetail }) {
 // ─── Tab: Documents ───
 
 function DocumentsTab({ vendor }: { vendor: VendorDetail }) {
+  const queryClient = useQueryClient();
+  const [localVerified, setLocalVerified] = useState<boolean | null>(null);
+
+  const reviewMutation = useMutation({
+    mutationFn: (approved: boolean) => reviewVendorDocs(vendor.id, approved),
+    onSuccess: (_ok, approved) => {
+      setLocalVerified(approved);
+      queryClient.invalidateQueries({ queryKey: ['vendorDetail', vendor.id] });
+      queryClient.invalidateQueries({ queryKey: ['vendors'] });
+      queryClient.invalidateQueries({ queryKey: ['verification-queue'] });
+    },
+  });
+
+  const isVerified = localVerified !== null ? localVerified : vendor.verified;
+
   const docs = [
     { label: 'Ghana Card Number', value: vendor.ghanaCardNumber, type: 'text' as const },
     { label: 'ID Document', value: vendor.idDocumentUrl, type: 'url' as const },
@@ -514,18 +529,84 @@ function DocumentsTab({ vendor }: { vendor: VendorDetail }) {
         <div style={{
           display: 'flex', alignItems: 'center', gap: '0.5rem',
           padding: '0.75rem', borderRadius: '0.625rem',
-          background: vendor.verified ? 'rgba(5,150,105,0.08)' : 'rgba(217,119,6,0.08)',
+          background: isVerified ? 'rgba(5,150,105,0.08)' : (localVerified === false ? 'rgba(225,29,72,0.08)' : 'rgba(217,119,6,0.08)'),
         }}>
-          <span style={{ fontSize: '1.25rem' }}>{vendor.verified ? '✓' : '⏳'}</span>
+          <span style={{ fontSize: '1.25rem' }}>
+            {isVerified ? '✓' : localVerified === false ? '✗' : '⏳'}
+          </span>
           <div>
-            <p style={{ fontSize: '0.875rem', fontWeight: 600, color: vendor.verified ? '#059669' : '#D97706', margin: 0 }}>
-              {vendor.verified ? 'Identity Verified' : 'Pending Verification'}
+            <p style={{ fontSize: '0.875rem', fontWeight: 600, color: isVerified ? '#059669' : (localVerified === false ? '#E11D48' : '#D97706'), margin: 0 }}>
+              {isVerified ? 'Identity Verified' : localVerified === false ? 'Documents Rejected' : 'Pending Verification'}
             </p>
             <p style={{ fontSize: '0.72rem', color: '#64748B', margin: '0.125rem 0 0 0' }}>
-              {vendor.verified ? 'Documents have been reviewed and approved' : 'Documents are awaiting review'}
+              {isVerified ? 'Documents have been reviewed and approved' : localVerified === false ? 'Vendor has been notified. Account status set to rejected.' : 'Documents are awaiting your review'}
             </p>
           </div>
         </div>
+
+        {/* Review actions — only show when there are docs and not yet verified */}
+        {hasAny && !isVerified && localVerified !== false && (
+          <div style={{ marginTop: '0.875rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+            <button
+              onClick={() => reviewMutation.mutate(false)}
+              disabled={reviewMutation.isPending}
+              style={{
+                padding: '0.625rem', borderRadius: '0.625rem',
+                border: '1.5px solid rgba(225,29,72,0.25)',
+                background: 'rgba(225,29,72,0.05)', color: '#E11D48',
+                fontSize: '0.8125rem', fontWeight: 700,
+                cursor: reviewMutation.isPending ? 'not-allowed' : 'pointer',
+                opacity: reviewMutation.isPending ? 0.5 : 1,
+                fontFamily: 'Plus Jakarta Sans',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem',
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+              Reject Docs
+            </button>
+            <button
+              onClick={() => reviewMutation.mutate(true)}
+              disabled={reviewMutation.isPending}
+              style={{
+                padding: '0.625rem', borderRadius: '0.625rem', border: 'none',
+                background: reviewMutation.isPending ? 'rgba(5,150,105,0.5)' : 'linear-gradient(135deg, #059669, #10B981)',
+                color: '#fff', fontSize: '0.8125rem', fontWeight: 700,
+                cursor: reviewMutation.isPending ? 'not-allowed' : 'pointer',
+                fontFamily: 'Plus Jakarta Sans', boxShadow: '0 2px 8px rgba(5,150,105,0.2)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem',
+              }}
+            >
+              {reviewMutation.isPending ? (
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: 'spin 0.8s linear infinite' }}>
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                </svg>
+              ) : (
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              )}
+              Approve Docs
+            </button>
+          </div>
+        )}
+
+        {/* Re-review option if already verified */}
+        {isVerified && (
+          <button
+            onClick={() => reviewMutation.mutate(false)}
+            disabled={reviewMutation.isPending}
+            style={{
+              marginTop: '0.75rem', width: '100%', padding: '0.5rem',
+              borderRadius: '0.5rem', border: '1.5px solid rgba(225,29,72,0.2)',
+              background: 'transparent', color: '#94A3B8', fontSize: '0.72rem', fontWeight: 600,
+              cursor: 'pointer', fontFamily: 'Plus Jakarta Sans',
+            }}
+          >
+            Revoke Verification
+          </button>
+        )}
       </SectionCard>
     </div>
   );
@@ -747,21 +828,29 @@ function ActivityTab({ vendorId }: { vendorId: number }) {
 
 interface VendorDetailDrawerProps {
   vendorId: number | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onClose?: () => void;
+  initialTab?: string;
 }
 
-export function VendorDetailDrawer({ vendorId, open, onOpenChange }: VendorDetailDrawerProps) {
+export function VendorDetailDrawer({ vendorId, open: openProp, onOpenChange, onClose, initialTab }: VendorDetailDrawerProps) {
+  const isOpen = openProp !== undefined ? openProp : vendorId !== null;
+  const handleOpenChange = (o: boolean) => {
+    if (onOpenChange) onOpenChange(o);
+    if (!o && onClose) onClose();
+  };
+
   const detailQ = useQuery({
     queryKey: ['vendorDetail', vendorId],
     queryFn: () => fetchVendorDetail(vendorId!),
-    enabled: open && vendorId !== null,
+    enabled: isOpen && vendorId !== null,
   });
 
   const vendor = detailQ.data;
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={isOpen} onOpenChange={handleOpenChange}>
       <SheetContent
         side="right"
         className="!w-[90vw] sm:!max-w-[520px] !p-0 !gap-0"
@@ -781,7 +870,7 @@ export function VendorDetailDrawer({ vendorId, open, onOpenChange }: VendorDetai
         ) : !vendor ? (
           <EmptyState message="Could not load vendor details. Make sure the database is connected." />
         ) : (
-          <Tabs defaultValue="overview" className="flex-1 !gap-0" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <Tabs defaultValue={initialTab || "overview"} className="flex-1 !gap-0" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <TabsList className="!w-full !rounded-none !h-10" style={{ flexShrink: 0, padding: '0 1rem' }}>
               <TabsTrigger value="overview" style={{ fontSize: '0.75rem' }}>Overview</TabsTrigger>
               <TabsTrigger value="documents" style={{ fontSize: '0.75rem' }}>Documents</TabsTrigger>

@@ -947,6 +947,45 @@ router.get("/api/vendor-health", async (_req, res) => {
 
 // ─── Vendor Detail Endpoints ─────────────────────────────────────────────────
 
+router.get("/api/verification-queue", async (_req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const { data, error } = await supabase!.from("vendors")
+      .select("id, businessName, phone, city, region, status, verified, ghanaCardNumber, idDocumentUrl, businessRegUrl, logoUrl, createdAt, updatedAt")
+      .eq("verified", false)
+      .neq("status", "rejected")
+      .or("ghanaCardNumber.not.is.null,idDocumentUrl.not.is.null,businessRegUrl.not.is.null")
+      .order("createdAt", { ascending: false })
+      .limit(100);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ source: "database", data: data || [] });
+  } catch (error) {
+    safeLogError("Verification queue error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+router.patch("/api/vendors/:id/verify", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  const vendorId = parseInt(req.params.id, 10);
+  if (isNaN(vendorId)) return res.status(400).json({ error: "Invalid vendor ID" });
+  const { approved } = req.body;
+  try {
+    const updateFields: Record<string, any> = {
+      verified: approved === true,
+      updatedAt: new Date().toISOString(),
+    };
+    if (approved === false) updateFields.status = "rejected";
+    const { data, error } = await supabase!.from("vendors")
+      .update(updateFields).eq("id", vendorId).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ source: "database", data });
+  } catch (error) {
+    safeLogError("Vendor verify error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
 router.get("/api/vendors/:id", async (req, res) => {
   if (dbUnavailable(res)) return;
   try {

@@ -308,6 +308,40 @@ export async function fetchProductAnalytics(timeRange: '1d' | '7d' | '30d' | 'al
   return result?.data ?? null;
 }
 
+// ─── Verification Queue ───────────────────────────────────────────────────────
+
+export interface VerificationQueueItem {
+  id: number;
+  businessName: string;
+  phone: string;
+  city: string | null;
+  region: string | null;
+  status: string;
+  verified: boolean;
+  ghanaCardNumber: string | null;
+  idDocumentUrl: string | null;
+  businessRegUrl: string | null;
+  logoUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchVerificationQueue(): Promise<VerificationQueueItem[]> {
+  const result = await apiGet<{ source: string; data: VerificationQueueItem[] }>('/api/verification-queue');
+  return result?.data ?? [];
+}
+
+export async function reviewVendorDocs(vendorId: number, approved: boolean): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/vendors/${vendorId}/verify`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approved }),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
 export async function updateUserRole(userId: number, role: string): Promise<boolean> {
   try {
     const res = await fetch(`/api/analytics/users/${userId}/role`, {

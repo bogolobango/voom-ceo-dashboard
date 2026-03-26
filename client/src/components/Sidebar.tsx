@@ -16,6 +16,7 @@ interface SidebarProps {
   activeSection: string;
   onNavigate: (section: string) => void;
   liveStatus: 'live' | 'warn' | 'error';
+  verificationCount?: number;
 }
 
 function VoomLogo() {
@@ -84,6 +85,9 @@ function IconCompetitive() {
 function IconAnalytics() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>;
 }
+function IconVerification() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 15 11 17 15 13"/></svg>;
+}
 
 const NAV_ITEMS: NavItem[] = [
   { id: 'briefing', label: 'Briefing', icon: <IconBriefing /> },
@@ -98,9 +102,10 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'security', label: 'Security', icon: <IconSecurity /> },
   { id: 'competitive', label: 'Competitive', icon: <IconCompetitive /> },
   { id: 'analytics', label: 'Analytics', icon: <IconAnalytics /> },
+  { id: 'verification', label: 'Doc Review', icon: <IconVerification /> },
 ];
 
-export function Sidebar({ activeSection, onNavigate, liveStatus }: SidebarProps) {
+export function Sidebar({ activeSection, onNavigate, liveStatus, verificationCount }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -230,15 +235,17 @@ export function Sidebar({ activeSection, onNavigate, liveStatus }: SidebarProps)
           >
             <span className="nav-icon" style={{ flexShrink: 0 }}>{item.icon}</span>
             {!collapsed && <span>{item.label}</span>}
-            {!collapsed && item.badge && (
+            {!collapsed && (item.badge || (item.id === 'verification' && verificationCount && verificationCount > 0)) && (
               <span style={{
                 marginLeft: 'auto', minWidth: 20, height: 20,
-                borderRadius: 999, background: '#4F46E5', color: 'white',
+                borderRadius: 999,
+                background: item.id === 'verification' ? '#E11D48' : '#4F46E5',
+                color: 'white',
                 fontSize: '0.65rem', fontWeight: 700,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 padding: '0 6px',
               }}>
-                {item.badge}
+                {item.id === 'verification' ? verificationCount : item.badge}
               </span>
             )}
           </button>

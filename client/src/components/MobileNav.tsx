@@ -156,12 +156,25 @@ const MORE_ITEMS = [
       </svg>
     ),
   },
+  {
+    id: 'verification',
+    label: 'Doc Review',
+    description: 'Verify vendor identity documents',
+    color: '#E11D48',
+    bg: 'rgba(225,29,72,0.08)',
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/><polyline points="9 15 11 17 15 13"/>
+      </svg>
+    ),
+  },
 ];
 
 export function MobileNav({ activeSection, onNavigate }: MobileNavProps) {
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const isMoreActive = ['vendors', 'revenue', 'products', 'crm', 'security', 'competitive', 'analytics'].includes(activeSection);
+  const isMoreActive = ['vendors', 'revenue', 'products', 'crm', 'security', 'competitive', 'analytics', 'verification'].includes(activeSection);
 
   const handleMoreItemClick = (id: string) => {
     onNavigate(id);

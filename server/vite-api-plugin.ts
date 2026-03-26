@@ -654,6 +654,38 @@ export default function viteApiPlugin(): Plugin {
             });
           }
 
+          // ─── /api/verification-queue ───
+          if (url === "/api/verification-queue" && req.method === "GET") {
+            if (!sb) return json(res, { source: "offline", data: [] });
+            const { data, error } = await sb.from("vendors")
+              .select("id, businessName, phone, city, region, status, verified, ghanaCardNumber, idDocumentUrl, businessRegUrl, logoUrl, createdAt, updatedAt")
+              .eq("verified", false)
+              .neq("status", "rejected")
+              .or("ghanaCardNumber.not.is.null,idDocumentUrl.not.is.null,businessRegUrl.not.is.null")
+              .order("createdAt", { ascending: false })
+              .limit(100);
+            if (error) return json(res, { error: error.message }, 400);
+            return json(res, { source: "database", data: data || [] });
+          }
+
+          // ─── /api/vendors/:id/verify (PATCH) ───
+          const vendorVerifyMatch = url.match(/^\/api\/vendors\/(\d+)\/verify$/);
+          if (vendorVerifyMatch && req.method === "PATCH") {
+            if (!sb) return json(res, { error: "Database not available" }, 503);
+            const vendorId = parseInt(vendorVerifyMatch[1], 10);
+            const body = await parseBody(req);
+            const { approved } = body;
+            const updateFields: Record<string, any> = {
+              verified: approved === true,
+              updatedAt: new Date().toISOString(),
+            };
+            if (approved === false) updateFields.status = "rejected";
+            const { data, error } = await sb.from("vendors")
+              .update(updateFields).eq("id", vendorId).select().single();
+            if (error) return json(res, { error: error.message }, 400);
+            return json(res, { source: "database", data });
+          }
+
           // ─── /api/vendors/:id (detail) ───
           const vendorDetailMatch = url.match(/^\/api\/vendors\/(\d+)$/);
           if (vendorDetailMatch) {

@@ -21,15 +21,17 @@ import { VendorCRM } from '../components/sections/VendorCRM';
 import { Security } from '../components/sections/Security';
 import { CompetitiveIntel } from '../components/sections/CompetitiveIntel';
 import { Analytics } from '../components/sections/Analytics';
+import { VerificationQueue } from '../components/sections/VerificationQueue';
 import {
   fetchStats, fetchVendors, fetchOrders, fetchProducts,
   fetchPartRequests, fetchRevenue, fetchGrowth, fetchBriefing,
+  fetchVerificationQueue,
   computeKPIs, getDataSource,
   type DataSource,
 } from '../lib/voomApi';
 import { toast } from 'sonner';
 
-type Section = 'briefing' | 'overview' | 'vendors' | 'products' | 'orders' | 'revenue' | 'part-requests' | 'growth' | 'crm' | 'security' | 'competitive' | 'analytics' | 'settings';
+type Section = 'briefing' | 'overview' | 'vendors' | 'products' | 'orders' | 'revenue' | 'part-requests' | 'growth' | 'crm' | 'security' | 'competitive' | 'analytics' | 'verification' | 'settings';
 
 const SECTION_LABELS: Record<Section, string> = {
   briefing: 'Morning Briefing',
@@ -44,6 +46,7 @@ const SECTION_LABELS: Record<Section, string> = {
   security: 'Security',
   competitive: 'Competitive Intel',
   analytics: 'Analytics',
+  verification: 'Document Review',
   settings: 'Settings',
 };
 
@@ -74,6 +77,7 @@ export default function Home() {
   const revenueQuery = useQuery({ queryKey: ['revenue'], queryFn: fetchRevenue });
   const growthQuery = useQuery({ queryKey: ['growth'], queryFn: fetchGrowth });
   const briefingQuery = useQuery({ queryKey: ['briefing'], queryFn: fetchBriefing });
+  const verificationQuery = useQuery({ queryKey: ['verification-queue'], queryFn: fetchVerificationQueue, staleTime: 60000, refetchInterval: 120000 });
 
   const vendors = vendorsQuery.data ?? [];
   const orders = ordersQuery.data ?? [];
@@ -90,6 +94,8 @@ export default function Home() {
     topSearches: [], zeroResultSearches: [],
     expiringVendors: [], activePaidVendors: 0, mrr: 0,
   };
+
+  const verificationCount = verificationQuery.data?.length ?? 0;
 
   const kpis = useMemo(() => {
     if (!statsQuery.data && vendors.length === 0 && orders.length === 0) return null;
@@ -223,6 +229,11 @@ export default function Home() {
           <Analytics />
         </WidgetErrorBoundary>
       );
+      case 'verification': return (
+        <WidgetErrorBoundary fallbackTitle="Document Review failed to load">
+          <VerificationQueue />
+        </WidgetErrorBoundary>
+      );
       default: return (
         <WidgetErrorBoundary fallbackTitle="Briefing failed to load">
           <MorningBriefing briefingData={briefingData} vendors={vendors} kpis={kpis} />
@@ -251,7 +262,7 @@ export default function Home() {
 
       {/* Desktop Sidebar */}
       {!isMobile && (
-        <Sidebar activeSection={activeSection} onNavigate={handleNavigate} liveStatus={liveStatus} />
+        <Sidebar activeSection={activeSection} onNavigate={handleNavigate} liveStatus={liveStatus} verificationCount={verificationCount} />
       )}
 
       {/* Mobile Drawer Overlay */}
@@ -270,7 +281,7 @@ export default function Home() {
             transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
             transition: 'transform 0.3s cubic-bezier(0.34,1.56,0.64,1)',
           }}>
-            <Sidebar activeSection={activeSection} onNavigate={handleNavigate} liveStatus={liveStatus} />
+            <Sidebar activeSection={activeSection} onNavigate={handleNavigate} liveStatus={liveStatus} verificationCount={verificationCount} />
           </div>
         </>
       )}
