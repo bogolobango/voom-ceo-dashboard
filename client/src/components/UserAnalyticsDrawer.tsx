@@ -3,9 +3,10 @@
  * Arctic Glass Design System — Sheet pattern
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from './ui/sheet';
-import { fetchUserDetail } from '../lib/voomApi';
+import { fetchUserDetail, verifyUser } from '../lib/voomApi';
 import type { AnalyticsUser, UserActivityEvent } from '../lib/voomApi';
 
 function formatDateTime(iso: string) {
@@ -80,11 +81,23 @@ function ActivityTimeline({ events }: { events: UserActivityEvent[] }) {
 interface Props { userId: number | null; onClose: () => void; }
 
 export function UserAnalyticsDrawer({ userId, onClose }: Props) {
+  const queryClient = useQueryClient();
+  const [verifyDone, setVerifyDone] = useState(false);
+
   const { data, isLoading } = useQuery({
     queryKey: ['user-detail', userId],
     queryFn: () => fetchUserDetail(userId!),
     enabled: userId !== null,
     staleTime: 60000,
+  });
+
+  const verifyMutation = useMutation({
+    mutationFn: () => verifyUser(userId!),
+    onSuccess: () => {
+      setVerifyDone(true);
+      queryClient.invalidateQueries({ queryKey: ['analytics-users'] });
+      queryClient.invalidateQueries({ queryKey: ['user-detail', userId] });
+    },
   });
 
   const user = data?.user ?? null;
@@ -121,6 +134,45 @@ export function UserAnalyticsDrawer({ userId, onClose }: Props) {
                 </div>
               </div>
             </SheetHeader>
+
+            {/* Unverified account banner */}
+            {!user.isVerified && !verifyDone && (
+              <div style={{
+                borderRadius: '0.875rem', padding: '0.875rem 1rem',
+                background: 'rgba(225,29,72,0.06)', border: '1px solid rgba(225,29,72,0.2)',
+                display: 'flex', alignItems: 'center', gap: '0.75rem',
+              }}>
+                <span style={{ fontSize: '1.25rem', flexShrink: 0 }}>⚠️</span>
+                <div style={{ flex: 1 }}>
+                  <p style={{ margin: 0, fontSize: '0.8125rem', fontWeight: 700, color: '#E11D48' }}>Account not verified</p>
+                  <p style={{ margin: '0.125rem 0 0', fontSize: '0.75rem', color: '#94A3B8' }}>
+                    This user cannot log in. Manually verify to restore access.
+                  </p>
+                </div>
+                <button
+                  onClick={() => verifyMutation.mutate()}
+                  disabled={verifyMutation.isPending}
+                  style={{
+                    padding: '0.4375rem 0.875rem', borderRadius: '0.625rem', border: 'none',
+                    background: '#E11D48', color: '#fff', fontSize: '0.78rem', fontWeight: 700,
+                    cursor: 'pointer', flexShrink: 0, opacity: verifyMutation.isPending ? 0.6 : 1,
+                    fontFamily: 'Plus Jakarta Sans',
+                  }}
+                >
+                  {verifyMutation.isPending ? 'Verifying…' : 'Verify Now'}
+                </button>
+              </div>
+            )}
+            {(verifyDone || (user.isVerified && verifyMutation.isSuccess)) && (
+              <div style={{
+                borderRadius: '0.875rem', padding: '0.75rem 1rem',
+                background: 'rgba(5,150,105,0.08)', border: '1px solid rgba(5,150,105,0.2)',
+                display: 'flex', alignItems: 'center', gap: '0.625rem',
+              }}>
+                <span style={{ fontSize: '1rem' }}>✅</span>
+                <p style={{ margin: 0, fontSize: '0.8125rem', fontWeight: 600, color: '#059669' }}>Account verified — user can now log in.</p>
+              </div>
+            )}
 
             {/* Info card */}
             <div style={{ background: 'rgba(79,70,229,0.04)', borderRadius: '1rem', padding: '1rem', border: '1px solid rgba(79,70,229,0.08)' }}>

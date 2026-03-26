@@ -308,6 +308,16 @@ export async function fetchProductAnalytics(timeRange: '1d' | '7d' | '30d' | 'al
   return result?.data ?? null;
 }
 
+export async function verifyUser(userId: number): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/analytics/users/${userId}/verify`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
 // ─── Derived KPI Calculations ───
 export interface DashboardKPIs {
   totalVendors: number;

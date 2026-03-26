@@ -18,7 +18,7 @@ import {
   fetchVendorDetail, fetchVendorOrders, fetchVendorPayouts,
   fetchVendorNotifications, fetchVendorSubscriptionEvents,
   updateVendorStatus, updateVendorTier, updateVendorFeatured,
-  sendVendorNotification,
+  sendVendorNotification, fetchAnalyticsUsers, verifyUser,
 } from '../lib/voomApi';
 
 // ─── Status / Tier Helpers ───
@@ -108,6 +108,75 @@ function Spinner() {
         animation: 'spin 0.8s linear infinite',
       }} />
     </div>
+  );
+}
+
+// ─── Linked User Account ───
+
+function LinkedUserAccount({ phone }: { phone: string | undefined }) {
+  const queryClient = useQueryClient();
+  const [verifyDone, setVerifyDone] = useState(false);
+
+  const { data: users = [] } = useQuery({
+    queryKey: ['analytics-users'],
+    queryFn: fetchAnalyticsUsers,
+    staleTime: 120000,
+  });
+
+  const linkedUser = users.find(u => u.phone && phone && u.phone.replace(/\s/g, '') === phone.replace(/\s/g, ''));
+
+  const verifyMutation = useMutation({
+    mutationFn: () => verifyUser(linkedUser!.id),
+    onSuccess: () => {
+      setVerifyDone(true);
+      queryClient.invalidateQueries({ queryKey: ['analytics-users'] });
+    },
+  });
+
+  if (!linkedUser) return null;
+
+  const isUnverified = !linkedUser.isVerified && !verifyDone;
+  const justVerified = verifyDone || (linkedUser.isVerified && verifyMutation.isSuccess);
+
+  return (
+    <SectionCard title="User Login Account">
+      <InfoRow label="Name" value={linkedUser.name || '—'} />
+      <InfoRow label="Email" value={linkedUser.email || '—'} />
+      <InfoRow label="Login method" value={linkedUser.loginMethod || '—'} />
+      <InfoRow label="Last sign-in" value={linkedUser.lastSignedIn ? new Date(linkedUser.lastSignedIn).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Never'} />
+      <InfoRow
+        label="Account status"
+        value={
+          <span style={{
+            fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: 999,
+            background: (linkedUser.isVerified || verifyDone) ? 'rgba(5,150,105,0.1)' : 'rgba(225,29,72,0.1)',
+            color: (linkedUser.isVerified || verifyDone) ? '#059669' : '#E11D48',
+          }}>
+            {(linkedUser.isVerified || verifyDone) ? '✓ Verified' : '✗ Not verified'}
+          </span>
+        }
+      />
+      {isUnverified && (
+        <div style={{ marginTop: '0.625rem', padding: '0.75rem', background: 'rgba(225,29,72,0.05)', borderRadius: '0.625rem', border: '1px solid rgba(225,29,72,0.15)' }}>
+          <p style={{ margin: '0 0 0.5rem', fontSize: '0.78rem', color: '#E11D48', fontWeight: 600 }}>⚠️ User cannot log in — account is unverified</p>
+          <button
+            onClick={() => verifyMutation.mutate()}
+            disabled={verifyMutation.isPending}
+            style={{
+              padding: '0.375rem 0.875rem', borderRadius: '0.5rem', border: 'none',
+              background: '#E11D48', color: '#fff', fontSize: '0.75rem', fontWeight: 700,
+              cursor: 'pointer', opacity: verifyMutation.isPending ? 0.6 : 1,
+              fontFamily: 'Plus Jakarta Sans',
+            }}
+          >
+            {verifyMutation.isPending ? 'Verifying…' : 'Fix: Mark Account Verified'}
+          </button>
+        </div>
+      )}
+      {justVerified && (
+        <p style={{ margin: '0.5rem 0 0', fontSize: '0.78rem', color: '#059669', fontWeight: 600 }}>✅ Account verified — user can now log in.</p>
+      )}
+    </SectionCard>
   );
 }
 
@@ -311,6 +380,9 @@ function OverviewTab({ vendor }: { vendor: VendorDetail }) {
           ))}
         </div>
       </SectionCard>
+
+      {/* Linked user login account */}
+      <LinkedUserAccount phone={vendor.phone} />
     </div>
   );
 }

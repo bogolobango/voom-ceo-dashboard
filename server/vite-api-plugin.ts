@@ -293,6 +293,18 @@ export default function viteApiPlugin(): Plugin {
             return json(res, { source: "database", data: users });
           }
 
+          // ─── /api/analytics/users/:id/verify (PATCH) ───
+          const verifyUserMatch = url.match(/^\/api\/analytics\/users\/(\d+)\/verify$/);
+          if (verifyUserMatch && req.method === "PATCH") {
+            if (!sb) return json(res, { error: "Database not available" }, 503);
+            const userId = parseInt(verifyUserMatch[1], 10);
+            const { error } = await sb.from("users")
+              .update({ isVerified: true, updatedAt: new Date().toISOString() })
+              .eq("id", userId);
+            if (error) return json(res, { error: error.message }, 400);
+            return json(res, { success: true, userId });
+          }
+
           // ─── /api/analytics/products ───
           if (url.startsWith("/api/analytics/products") && req.method === "GET") {
             if (!sb) return json(res, { source: "offline", data: null });
