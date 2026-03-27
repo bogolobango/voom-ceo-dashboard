@@ -8,7 +8,19 @@
 // ─── Data source tracking ───
 export type DataSource = 'database' | 'offline';
 let _dataSource: DataSource = 'offline';
+let _everConnected = false;
 export function getDataSource(): DataSource { return _dataSource; }
+
+function setDataSource(src: DataSource) {
+  if (src === 'database') {
+    _everConnected = true;
+    _dataSource = 'database';
+  } else {
+    // Only drop back to offline if we have never successfully connected.
+    // Transient failures during refresh shouldn't flip the indicator.
+    if (!_everConnected) _dataSource = 'offline';
+  }
+}
 
 // ─── Types ───
 
@@ -155,10 +167,10 @@ async function apiGet<T>(path: string): Promise<T | null> {
 export async function fetchStats(): Promise<AdminStats | null> {
   const data = await apiGet<AdminStats & { source: string }>('/api/stats');
   if (data && data.source === 'database') {
-    _dataSource = 'database';
+    setDataSource('database');
     return data;
   }
-  _dataSource = 'offline';
+  setDataSource('offline');
   return null;
 }
 
@@ -166,9 +178,10 @@ export async function fetchStats(): Promise<AdminStats | null> {
 export async function fetchVendors(): Promise<Vendor[]> {
   const result = await apiGet<{ source: string; data: Vendor[] }>('/api/vendors');
   if (result?.source === 'database') {
-    _dataSource = 'database';
+    setDataSource('database');
     return result.data;
   }
+  setDataSource('offline');
   return [];
 }
 
@@ -176,9 +189,10 @@ export async function fetchVendors(): Promise<Vendor[]> {
 export async function fetchOrders(): Promise<Order[]> {
   const result = await apiGet<{ source: string; data: Order[] }>('/api/orders');
   if (result?.source === 'database') {
-    _dataSource = 'database';
+    setDataSource('database');
     return result.data;
   }
+  setDataSource('offline');
   return [];
 }
 
@@ -186,9 +200,10 @@ export async function fetchOrders(): Promise<Order[]> {
 export async function fetchProducts(): Promise<Product[]> {
   const result = await apiGet<{ source: string; data: Product[] }>('/api/products');
   if (result?.source === 'database') {
-    _dataSource = 'database';
+    setDataSource('database');
     return result.data;
   }
+  setDataSource('offline');
   return [];
 }
 

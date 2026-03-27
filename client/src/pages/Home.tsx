@@ -118,13 +118,12 @@ export default function Home() {
     return latest ? new Date(latest) : new Date();
   }, [statsQuery.dataUpdatedAt, vendorsQuery.dataUpdatedAt, ordersQuery.dataUpdatedAt]);
 
-  // Show toast once on first successful fetch if offline
-  const hasShownToast = useRef(false);
+  // Show toast once when confirmed connected (suppress false-offline during refresh)
+  const hasShownConnectedToast = useRef(false);
   useEffect(() => {
-    if (hasShownToast.current) return;
-    if (statsQuery.isSuccess && dataSource === 'offline') {
-      toast.error('Not connected to database. Set DATABASE_URL and restart server.');
-      hasShownToast.current = true;
+    if (hasShownConnectedToast.current) return;
+    if (statsQuery.isSuccess && dataSource === 'database') {
+      hasShownConnectedToast.current = true;
     }
   }, [statsQuery.isSuccess, dataSource]);
 
@@ -160,16 +159,24 @@ export default function Home() {
   }, [handleRefresh]);
 
   const renderSection = () => {
-    if (!kpis) return (
-      <div style={{ textAlign: 'center', padding: '4rem 1rem' }}>
-        <p style={{ fontFamily: 'Plus Jakarta Sans', fontWeight: 600, color: '#0F172A', marginBottom: '0.25rem' }}>
-          No data available
-        </p>
-        <p style={{ fontSize: '0.8125rem', color: '#94A3B8' }}>
-          Connect a database or check your backend configuration.
-        </p>
-      </div>
-    );
+    if (!kpis) {
+      if (isAnyLoading) return (
+        <div style={{ textAlign: 'center', padding: '4rem 1rem' }}>
+          <div style={{ width: 32, height: 32, border: '3px solid rgba(79,70,229,0.15)', borderTopColor: '#4F46E5', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 1rem' }} />
+          <p style={{ fontSize: '0.8125rem', color: '#94A3B8', fontFamily: 'Plus Jakarta Sans' }}>Loading dashboard data…</p>
+        </div>
+      );
+      return (
+        <div style={{ textAlign: 'center', padding: '4rem 1rem' }}>
+          <p style={{ fontFamily: 'Plus Jakarta Sans', fontWeight: 600, color: '#0F172A', marginBottom: '0.25rem' }}>
+            No data available
+          </p>
+          <p style={{ fontSize: '0.8125rem', color: '#94A3B8' }}>
+            Check your backend configuration or refresh to retry.
+          </p>
+        </div>
+      );
+    }
     switch (activeSection) {
       case 'briefing': return (
         <WidgetErrorBoundary fallbackTitle="Briefing failed to load">
@@ -377,9 +384,9 @@ export default function Home() {
             <button
               onClick={() => {
                 if (dataSource === 'database') {
-                  toast.success('Connected to Render PostgreSQL database — showing live data.');
+                  toast.success('Connected to Supabase — showing live data.');
                 } else {
-                  toast.error('Not connected to database. Set DATABASE_URL in .env and run: pnpm dev');
+                  toast.warning('Connecting to database… If this persists, check VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY and restart the server.');
                 }
               }}
               style={{
@@ -394,8 +401,8 @@ export default function Home() {
             >
               <div className={`status-orb ${liveStatus}`} style={{ width: 6, height: 6 }} />
               {dataSource === 'database'
-                ? (isMobile ? 'Live DB' : 'Render DB Connected')
-                : (isMobile ? 'Offline' : 'No Database')}
+                ? (isMobile ? 'Live DB' : 'DB Connected')
+                : (isMobile ? 'Connecting…' : 'Connecting…')}
             </button>
           </div>
         </header>

@@ -422,3 +422,7 @@
   50% { transform: scale(1.8); opacity: 0; }
   100% { transform: scale(1); opacity: 0; }
 }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
