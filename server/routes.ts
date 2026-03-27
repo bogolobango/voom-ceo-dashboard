@@ -545,7 +545,7 @@ router.get("/api/briefing", async (_req, res) => {
       supabase!.from("vendors").select("*", { count: "exact", head: true }).gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
       supabase!.from("part_requests").select("*", { count: "exact", head: true }).gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
       supabase!.from("analytics_events").select("metadata").eq("eventType", "search").gte("createdAt", twentyFourHoursAgo),
-      supabase!.from("vendors").select("id, businessName, tier, tierExpiresAt").neq("tier", "free").gte("tierExpiresAt", nowISO).lte("tierExpiresAt", sevenDaysFromNow),
+      supabase!.from("vendors").select("id, businessName, tier, tierExpiresAt, tierTrialUsed").neq("tier", "free").gte("tierExpiresAt", nowISO).lte("tierExpiresAt", sevenDaysFromNow),
       supabase!.from("vendors").select("tier, tierExpiresAt").neq("tier", "free"),
       supabase!.from("users").select("*", { count: "exact", head: true }).gte("createdAt", todayStart),
       supabase!.from("users").select("*", { count: "exact", head: true }),
@@ -582,6 +582,7 @@ router.get("/api/briefing", async (_req, res) => {
       businessName: v.businessName,
       tier: v.tier,
       tierExpiresAt: v.tierExpiresAt,
+      tierTrialUsed: v.tierTrialUsed ?? false,
     }));
 
     let activePaidVendors = 0;
@@ -778,6 +779,97 @@ router.patch("/api/analytics/users/:id/verify", async (req, res) => {
 });
 
 // ─── Analytics: Products ────────────────────────────────────
+
+router.get("/api/analytics/visitors", async (_req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const [{ data: eventsData }, { count: totalUsers }] = await Promise.all([
+      supabase!.from("analytics_events").select("visitorId, userId, eventType, createdAt").order("createdAt", { ascending: false }),
+      supabase!.from("users").select("*", { count: "exact", head: true }),
+    ]);
+
+    const visitorSet = new Set<string>();
+    const loggedInVisitorSet = new Set<string>();
+    const anonVisitorSet = new Set<string>();
+    const visitorActivity = new Map<string, { views: number; searches: number; waTaps: number; lastSeen: string | null }>();
+
+    for (const evt of (eventsData || []) as any[]) {
+      const vid = evt.visitorId as string | null;
+      if (!vid) continue;
+      visitorSet.add(vid);
+      if (evt.userId) loggedInVisitorSet.add(vid);
+      else anonVisitorSet.add(vid);
+
+      if (!visitorActivity.has(vid)) visitorActivity.set(vid, { views: 0, searches: 0, waTaps: 0, lastSeen: null });
+      const va = visitorActivity.get(vid)!;
+      if (!va.lastSeen || evt.createdAt > va.lastSeen) va.lastSeen = evt.createdAt;
+      if (evt.eventType === "product_view") va.views++;
+      else if (evt.eventType === "search") va.searches++;
+      else if (evt.eventType === "whatsapp_tap") va.waTaps++;
+    }
+
+    const topVisitors = [...visitorActivity.entries()]
+      .sort((a, b) => (b[1].views + b[1].searches + b[1].waTaps) - (a[1].views + a[1].searches + a[1].waTaps))
+      .slice(0, 20)
+      .map(([visitorId, stats]) => ({ visitorId, isAnon: !loggedInVisitorSet.has(visitorId), ...stats }));
+
+    res.json({
+      source: "database",
+      data: {
+        totalVisitors: visitorSet.size,
+        loggedInVisitors: loggedInVisitorSet.size,
+        anonVisitors: anonVisitorSet.size,
+        registeredUsers: totalUsers ?? 0,
+        registrationRate: visitorSet.size > 0 ? (loggedInVisitorSet.size / visitorSet.size) : 0,
+        topVisitors,
+      },
+    });
+  } catch (error) {
+    safeLogError("Visitor analytics query error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+// ─── Analytics: Conversion Funnel (views → wishlist → cart → orders) ──────────
+
+router.get("/api/analytics/funnel", async (_req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const [
+      { count: totalViews },
+      { count: wishlistAdds },
+      { count: cartAdds },
+      { count: totalOrders },
+    ] = await Promise.all([
+      supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "product_view"),
+      supabase!.from("wishlists").select("*", { count: "exact", head: true }),
+      supabase!.from("cart_items").select("*", { count: "exact", head: true }),
+      supabase!.from("orders").select("*", { count: "exact", head: true }),
+    ]);
+
+    const views = totalViews ?? 0;
+    const wishlists = wishlistAdds ?? 0;
+    const carts = cartAdds ?? 0;
+    const orders = totalOrders ?? 0;
+
+    res.json({
+      source: "database",
+      data: {
+        views,
+        wishlists,
+        carts,
+        orders,
+        viewToWishlist: views > 0 ? wishlists / views : 0,
+        wishlistToCart: wishlists > 0 ? carts / wishlists : 0,
+        cartToOrder: carts > 0 ? orders / carts : 0,
+        viewToOrder: views > 0 ? orders / views : 0,
+      },
+    });
+  } catch (error) {
+    safeLogError("Funnel analytics query error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
 
 router.get("/api/analytics/products", async (req, res) => {
   if (dbUnavailable(res)) return;

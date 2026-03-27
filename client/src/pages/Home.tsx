@@ -91,8 +91,10 @@ export default function Home() {
     todayProductViews: 0, yesterdayProductViews: 0,
     todayNewVendors: 0, yesterdayNewVendors: 0,
     todayPartRequests: 0, yesterdayPartRequests: 0,
+    todayNewUsers: 0, yesterdayNewUsers: 0, totalUsers: 0,
     topSearches: [], zeroResultSearches: [],
     expiringVendors: [], activePaidVendors: 0, mrr: 0,
+    topCategories: [],
   };
 
   const verificationCount = verificationQuery.data?.length ?? 0;

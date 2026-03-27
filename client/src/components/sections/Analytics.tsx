@@ -6,8 +6,8 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  fetchAnalyticsUsers, fetchProductAnalytics,
-  type AnalyticsUser, type ProductViewStat,
+  fetchAnalyticsUsers, fetchProductAnalytics, fetchVisitorAnalytics, fetchBehaviorFunnel,
+  type AnalyticsUser, type ProductViewStat, type VisitorAnalyticsData, type BehaviorFunnelData,
 } from '../../lib/voomApi';
 import { UserAnalyticsDrawer } from '../UserAnalyticsDrawer';
 
@@ -130,6 +130,18 @@ function UsersTab({ onSelectUser }: { onSelectUser: (id: number) => void }) {
     staleTime: 120000,
   });
 
+  const { data: visitorData } = useQuery({
+    queryKey: ['analytics-visitors'],
+    queryFn: fetchVisitorAnalytics,
+    staleTime: 300000,
+  });
+
+  const { data: funnelData } = useQuery({
+    queryKey: ['analytics-funnel'],
+    queryFn: fetchBehaviorFunnel,
+    staleTime: 300000,
+  });
+
   const filtered = useMemo(() => {
     const lower = search.toLowerCase();
     return users
@@ -148,11 +160,18 @@ function UsersTab({ onSelectUser }: { onSelectUser: (id: number) => void }) {
   const activeUsers = users.filter(u => u.activityCounts.total > 0).length;
 
   return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {/* Visitor overview + behavior funnel cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
+        {visitorData && <VisitorCard data={visitorData} />}
+        {funnelData && <BehaviorFunnelCard data={funnelData} />}
+      </div>
+
     <GlassCard>
       {/* Summary row */}
       <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
         {[
-          { label: 'Total Users', value: users.length, color: '#4F46E5' },
+          { label: 'Registered Users', value: users.length, color: '#4F46E5' },
           { label: 'Active (with events)', value: activeUsers, color: '#059669' },
           { label: 'No activity yet', value: users.length - activeUsers, color: '#94A3B8' },
         ].map(item => (
@@ -251,6 +270,108 @@ function UsersTab({ onSelectUser }: { onSelectUser: (id: number) => void }) {
           {filtered.length === 0 && !isLoading && (
             <p style={{ textAlign: 'center', color: '#94A3B8', fontSize: '0.82rem', padding: '2rem 0' }}>No users match your search</p>
           )}
+        </div>
+      )}
+    </GlassCard>
+    </div>
+  );
+}
+
+// ─── Visitor Analytics Card ───
+
+function VisitorCard({ data }: { data: VisitorAnalyticsData }) {
+  const regPct = Math.round(data.registrationRate * 100);
+  const items = [
+    { label: 'Total Visitors', value: data.totalVisitors, color: '#4F46E5', sub: 'Unique tracked sessions' },
+    { label: 'Logged-In', value: data.loggedInVisitors, color: '#059669', sub: 'At least one authenticated event' },
+    { label: 'Anonymous', value: data.anonVisitors, color: '#D97706', sub: 'Never logged in' },
+    { label: 'Registered Users', value: data.registeredUsers, color: '#0EA5E9', sub: 'Total accounts in DB' },
+  ];
+
+  return (
+    <GlassCard>
+      <SectionTitle sub="Tracked visitor sessions vs registered accounts">Visitor Overview</SectionTitle>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.625rem', marginBottom: '1rem' }}>
+        {items.map(item => (
+          <div key={item.label} style={{
+            background: `${item.color}08`, borderRadius: '0.875rem',
+            padding: '0.75rem', border: `1px solid ${item.color}12`,
+          }}>
+            <p style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: item.color, fontFamily: 'Space Grotesk' }}>{item.value.toLocaleString()}</p>
+            <p style={{ margin: '0.125rem 0 0', fontSize: '0.72rem', fontWeight: 600, color: '#0F172A' }}>{item.label}</p>
+            <p style={{ margin: 0, fontSize: '0.68rem', color: '#94A3B8' }}>{item.sub}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Registration rate bar */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.375rem' }}>
+          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#0F172A' }}>Visitor → Account Conversion</span>
+          <span style={{ fontFamily: 'Space Grotesk', fontWeight: 700, fontSize: '0.875rem', color: '#4F46E5' }}>{regPct}%</span>
+        </div>
+        <div style={{ height: 8, borderRadius: 999, background: 'rgba(79,70,229,0.08)' }}>
+          <div style={{ height: '100%', width: `${Math.min(regPct, 100)}%`, borderRadius: 999, background: 'linear-gradient(90deg, #4F46E5, #7C3AED)', transition: 'width 1s ease' }} />
+        </div>
+        <p style={{ margin: '0.375rem 0 0', fontSize: '0.72rem', color: '#94A3B8' }}>
+          {data.loggedInVisitors} of {data.totalVisitors} tracked visitors have a registered account
+        </p>
+      </div>
+    </GlassCard>
+  );
+}
+
+// ─── Behavior Funnel Card (Views → Wishlist → Cart → Order) ───
+
+function BehaviorFunnelCard({ data }: { data: BehaviorFunnelData }) {
+  const steps = [
+    { label: 'Product Views', value: data.views, color: '#4F46E5', icon: '👁', rate: null },
+    { label: 'Wishlists', value: data.wishlists, color: '#7C3AED', icon: '♡', rate: data.views > 0 ? (data.viewToWishlist * 100).toFixed(1) + '%' : null, rateLabel: 'of views' },
+    { label: 'Cart Adds', value: data.carts, color: '#0EA5E9', icon: '🛒', rate: data.wishlists > 0 ? (data.wishlistToCart * 100).toFixed(1) + '%' : null, rateLabel: 'of wishlists' },
+    { label: 'Orders', value: data.orders, color: '#059669', icon: '✓', rate: data.carts > 0 ? (data.cartToOrder * 100).toFixed(1) + '%' : null, rateLabel: 'of carts' },
+  ];
+  const maxVal = Math.max(...steps.map(s => s.value), 1);
+
+  return (
+    <GlassCard>
+      <SectionTitle sub="All-time behavior funnel: Views → Wishlist → Cart → Order">Purchase Funnel</SectionTitle>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+        {steps.map((step, idx) => {
+          const pct = Math.round((step.value / maxVal) * 100);
+          return (
+            <div key={step.label}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.375rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '1rem' }}>{step.icon}</span>
+                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#0F172A' }}>{step.label}</span>
+                  {idx > 0 && step.rate && (
+                    <span style={{ fontSize: '0.7rem', color: '#94A3B8', fontStyle: 'italic' }}>
+                      {step.rate} {(step as any).rateLabel}
+                    </span>
+                  )}
+                </div>
+                <span style={{ fontFamily: 'Space Grotesk', fontWeight: 800, fontSize: '1.25rem', color: step.color }}>
+                  {step.value.toLocaleString()}
+                </span>
+              </div>
+              <div style={{ height: 8, borderRadius: 999, background: 'rgba(79,70,229,0.06)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${pct}%`, borderRadius: 999, background: step.color, transition: 'width 1s ease' }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {data.views > 0 && (
+        <div style={{
+          marginTop: '0.875rem', padding: '0.625rem 0.875rem',
+          borderRadius: '0.625rem', background: 'rgba(5,150,105,0.06)',
+          border: '1px solid rgba(5,150,105,0.12)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#059669' }}>View → Order Rate</span>
+          <span style={{ fontFamily: 'Space Grotesk', fontWeight: 800, fontSize: '1rem', color: '#059669' }}>
+            {(data.viewToOrder * 100).toFixed(2)}%
+          </span>
         </div>
       )}
     </GlassCard>

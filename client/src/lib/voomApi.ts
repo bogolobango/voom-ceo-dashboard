@@ -134,7 +134,7 @@ export interface BriefingData {
   totalUsers: number;
   topSearches: { query: string; count: number; results: number }[];
   zeroResultSearches: { query: string; count: number }[];
-  expiringVendors: { id: number; businessName: string; tier: string; tierExpiresAt: string }[];
+  expiringVendors: { id: number; businessName: string; tier: string; tierExpiresAt: string; tierTrialUsed: boolean }[];
   activePaidVendors: number;
   mrr: number;
   topCategories: { name: string; views: number }[];
@@ -291,6 +291,36 @@ export interface ProductAnalyticsData {
   topProducts: ProductViewStat[];
   deadStock: ProductViewStat[];
   categoryTrends: { name: string; views: number; change: number }[];
+}
+
+export interface VisitorAnalyticsData {
+  totalVisitors: number;
+  loggedInVisitors: number;
+  anonVisitors: number;
+  registeredUsers: number;
+  registrationRate: number;
+  topVisitors: { visitorId: string; isAnon: boolean; views: number; searches: number; waTaps: number; lastSeen: string | null }[];
+}
+
+export interface BehaviorFunnelData {
+  views: number;
+  wishlists: number;
+  carts: number;
+  orders: number;
+  viewToWishlist: number;
+  wishlistToCart: number;
+  cartToOrder: number;
+  viewToOrder: number;
+}
+
+export async function fetchVisitorAnalytics(): Promise<VisitorAnalyticsData | null> {
+  const result = await apiGet<{ source: string; data: VisitorAnalyticsData }>('/api/analytics/visitors');
+  return result?.data ?? null;
+}
+
+export async function fetchBehaviorFunnel(): Promise<BehaviorFunnelData | null> {
+  const result = await apiGet<{ source: string; data: BehaviorFunnelData }>('/api/analytics/funnel');
+  return result?.data ?? null;
 }
 
 export async function fetchAnalyticsUsers(): Promise<AnalyticsUser[]> {

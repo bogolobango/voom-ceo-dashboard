@@ -142,7 +142,7 @@ export default function viteApiPlugin(): Plugin {
               sb.from("vendors").select("*", { count: "exact", head: true }).gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
               sb.from("part_requests").select("*", { count: "exact", head: true }).gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
               sb.from("analytics_events").select("metadata").eq("eventType", "search").gte("createdAt", twentyFourHoursAgo),
-              sb.from("vendors").select("id, businessName, tier, tierExpiresAt").neq("tier", "free").gte("tierExpiresAt", nowISO).lte("tierExpiresAt", sevenDaysFromNow),
+              sb.from("vendors").select("id, businessName, tier, tierExpiresAt, tierTrialUsed").neq("tier", "free").gte("tierExpiresAt", nowISO).lte("tierExpiresAt", sevenDaysFromNow),
               sb.from("vendors").select("tier, tierExpiresAt").neq("tier", "free"),
               sb.from("users").select("*", { count: "exact", head: true }).gte("createdAt", todayStart),
               sb.from("users").select("*", { count: "exact", head: true }),
@@ -170,7 +170,7 @@ export default function viteApiPlugin(): Plugin {
               .map(([query, count]) => ({ query, count }));
 
             // Expiring vendors
-            const expiringVendors = ((expiringVendorsRaw || []) as any[]).map((v) => ({ id: v.id, businessName: v.businessName, tier: v.tier, tierExpiresAt: v.tierExpiresAt }));
+            const expiringVendors = ((expiringVendorsRaw || []) as any[]).map((v) => ({ id: v.id, businessName: v.businessName, tier: v.tier, tierExpiresAt: v.tierExpiresAt, tierTrialUsed: v.tierTrialUsed ?? false }));
 
             // MRR calculation
             let activePaidVendors = 0;
@@ -319,6 +319,48 @@ export default function viteApiPlugin(): Plugin {
               .eq("id", userId);
             if (error) return json(res, { error: error.message }, 400);
             return json(res, { success: true, userId, role });
+          }
+
+          // ─── /api/analytics/visitors ───
+          if (url === "/api/analytics/visitors" && req.method === "GET") {
+            if (!sb) return json(res, { source: "offline", data: { totalVisitors: 0, loggedInVisitors: 0, anonVisitors: 0, registeredUsers: 0, registrationRate: 0, topVisitors: [] } });
+            const [{ data: eventsData }, { count: totalUsers }] = await Promise.all([
+              sb.from("analytics_events").select("visitorId, userId, eventType, createdAt").order("createdAt", { ascending: false }),
+              sb.from("users").select("*", { count: "exact", head: true }),
+            ]);
+            const visitorSet = new Set<string>();
+            const loggedInVisitorSet = new Set<string>();
+            const anonVisitorSet = new Set<string>();
+            const visitorActivity = new Map<string, { views: number; searches: number; waTaps: number; lastSeen: string | null }>();
+            for (const evt of (eventsData || []) as any[]) {
+              const vid = evt.visitorId as string | null;
+              if (!vid) continue;
+              visitorSet.add(vid);
+              if (evt.userId) loggedInVisitorSet.add(vid); else anonVisitorSet.add(vid);
+              if (!visitorActivity.has(vid)) visitorActivity.set(vid, { views: 0, searches: 0, waTaps: 0, lastSeen: null });
+              const va = visitorActivity.get(vid)!;
+              if (!va.lastSeen || evt.createdAt > va.lastSeen) va.lastSeen = evt.createdAt;
+              if (evt.eventType === "product_view") va.views++;
+              else if (evt.eventType === "search") va.searches++;
+              else if (evt.eventType === "whatsapp_tap") va.waTaps++;
+            }
+            const topVisitors = [...visitorActivity.entries()]
+              .sort((a, b) => (b[1].views + b[1].searches + b[1].waTaps) - (a[1].views + a[1].searches + a[1].waTaps))
+              .slice(0, 20).map(([visitorId, stats]) => ({ visitorId, isAnon: !loggedInVisitorSet.has(visitorId), ...stats }));
+            return json(res, { source: "database", data: { totalVisitors: visitorSet.size, loggedInVisitors: loggedInVisitorSet.size, anonVisitors: anonVisitorSet.size, registeredUsers: totalUsers ?? 0, registrationRate: visitorSet.size > 0 ? loggedInVisitorSet.size / visitorSet.size : 0, topVisitors } });
+          }
+
+          // ─── /api/analytics/funnel ───
+          if (url === "/api/analytics/funnel" && req.method === "GET") {
+            if (!sb) return json(res, { source: "offline", data: { views: 0, wishlists: 0, carts: 0, orders: 0, viewToWishlist: 0, wishlistToCart: 0, cartToOrder: 0, viewToOrder: 0 } });
+            const [{ count: totalViews }, { count: wishlistAdds }, { count: cartAdds }, { count: totalOrders }] = await Promise.all([
+              sb.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "product_view"),
+              sb.from("wishlists").select("*", { count: "exact", head: true }),
+              sb.from("cart_items").select("*", { count: "exact", head: true }),
+              sb.from("orders").select("*", { count: "exact", head: true }),
+            ]);
+            const views = totalViews ?? 0; const wishlists = wishlistAdds ?? 0; const carts = cartAdds ?? 0; const orders = totalOrders ?? 0;
+            return json(res, { source: "database", data: { views, wishlists, carts, orders, viewToWishlist: views > 0 ? wishlists / views : 0, wishlistToCart: wishlists > 0 ? carts / wishlists : 0, cartToOrder: carts > 0 ? orders / carts : 0, viewToOrder: views > 0 ? orders / views : 0 } });
           }
 
           // ─── /api/analytics/products ───

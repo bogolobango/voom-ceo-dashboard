@@ -135,10 +135,13 @@ export function MorningBriefing({ briefingData, vendors, kpis }: MorningBriefing
     const items: { type: 'urgent' | 'warning'; label: string; detail: string }[] = [];
 
     sortedExpiring.forEach(v => {
+      const isTrial = (v as any).tierTrialUsed === true;
       items.push({
         type: v.daysLeft <= 2 ? 'urgent' : 'warning',
-        label: `${v.businessName} (${v.tier}) expires in ${v.daysLeft}d`,
-        detail: `GH₵ ${TIER_PRICES[v.tier] || 0}/mo at risk`,
+        label: `${v.businessName} (${v.tier}${isTrial ? ' trial' : ''}) expires in ${v.daysLeft}d`,
+        detail: isTrial
+          ? `Trial ends — upgrade to retain GH₵ ${TIER_PRICES[v.tier] || 0}/mo`
+          : `GH₵ ${TIER_PRICES[v.tier] || 0}/mo at risk`,
       });
     });
 
