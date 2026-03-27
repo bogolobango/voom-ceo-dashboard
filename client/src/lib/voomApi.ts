@@ -38,6 +38,7 @@ export interface AdminStats {
 
 export interface Vendor {
   id: number;
+  userId: number | null;
   businessName: string;
   phone: string;
   whatsapp: string | null;
@@ -52,6 +53,11 @@ export interface Vendor {
   tier: string;
   isFeatured: boolean;
   createdAt: string;
+}
+
+export interface OutreachInvite {
+  vendorId: number;
+  invitedAt: string;
 }
 
 export interface Order {
@@ -183,6 +189,17 @@ export async function fetchVendors(): Promise<Vendor[]> {
   }
   setDataSource('offline');
   return [];
+}
+
+export async function fetchOutreachInvites(): Promise<OutreachInvite[]> {
+  const result = await apiGet<OutreachInvite[]>('/api/vendors/outreach-invites');
+  return result ?? [];
+}
+
+export async function sendOutreachInvite(vendorId: number): Promise<{ whatsappUrl: string; vendorPageUrl: string }> {
+  const res = await fetch(`/api/vendors/${vendorId}/outreach-invite`, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to send invite');
+  return res.json();
 }
 
 // ─── Orders ───

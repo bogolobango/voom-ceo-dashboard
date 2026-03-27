@@ -97,7 +97,7 @@ router.get("/api/vendors", async (req, res) => {
   try {
     const { data: allVendors, error } = await supabase!
       .from("vendors")
-      .select("id, businessName, phone, whatsapp, city, region, status, verified, rating, totalSales, tier, isFeatured, createdAt")
+      .select("id, userId, businessName, phone, whatsapp, city, region, status, verified, rating, totalSales, tier, isFeatured, createdAt")
       .order("createdAt", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -135,6 +135,7 @@ router.get("/api/vendors", async (req, res) => {
       const oStats = orderMap.get(v.id);
       return {
         id: v.id,
+        userId: v.userId ?? null,
         businessName: v.businessName,
         phone: v.phone,
         whatsapp: v.whatsapp,
@@ -1416,6 +1417,80 @@ router.post("/api/vendors/:id/notifications", async (req, res) => {
   } catch (error) {
     safeLogError("Vendor notification create error", error);
     res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+// ─── GET /api/vendors/outreach-invites ──────────────────────────────────────
+router.get("/api/vendors/outreach-invites", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const { data, error } = await supabase!
+      .from("analytics_events")
+      .select("vendorId, createdAt")
+      .eq("eventType", "whatsapp_tap")
+      .contains("metadata", { source: "outreach_invite" })
+      .not("vendorId", "is", null)
+      .order("createdAt", { ascending: false });
+    if (error) throw error;
+    // Return only the most recent invite per vendorId
+    const seen = new Map<number, string>();
+    for (const row of data || []) {
+      if (!seen.has(row.vendorId)) seen.set(row.vendorId, row.createdAt);
+    }
+    const result = Array.from(seen.entries()).map(([vendorId, invitedAt]) => ({ vendorId, invitedAt }));
+    res.json(result);
+  } catch (error) {
+    safeLogError("Outreach invites fetch error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+// ─── POST /api/vendors/:id/outreach-invite ───────────────────────────────────
+router.post("/api/vendors/:id/outreach-invite", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const vendorId = parseInt(req.params.id, 10);
+    if (isNaN(vendorId)) return res.status(400).json({ error: "Invalid vendor ID" });
+
+    const { data: vendor, error: vErr } = await supabase!
+      .from("vendors")
+      .select("id, businessName, phone, whatsapp, userId")
+      .eq("id", vendorId)
+      .single();
+    if (vErr || !vendor) return res.status(404).json({ error: "Vendor not found" });
+
+    // Build WhatsApp number
+    const digitsOnly = vendor.phone.replace(/\D/g, "");
+    let waNumber = digitsOnly;
+    if (digitsOnly.startsWith("233")) waNumber = digitsOnly;
+    else if (digitsOnly.startsWith("0") && digitsOnly.length === 10) waNumber = "233" + digitsOnly.slice(1);
+    else if (digitsOnly.length === 9) waNumber = "233" + digitsOnly;
+
+    const vendorPageUrl = `https://voomparts.com/vendors/${vendorId}`;
+    const message =
+      `Hi! 👋 Your shop, *${vendor.businessName}*, is already live on VOOM Ghana — Ghana's online auto-parts marketplace.\n\n` +
+      `🔗 See your listing: ${vendorPageUrl}\n\n` +
+      `Buyers across all 16 regions of Ghana can already find you! Claim your free account to:\n` +
+      `✅ Manage your listings\n` +
+      `✅ Add more products\n` +
+      `✅ Get your verified badge\n` +
+      `✅ Receive direct buyer enquiries\n\n` +
+      `Reply *YES* and I'll send you the quick 5-min setup link — completely free!\n\n` +
+      `— VOOM Ghana Team 🚗`;
+
+    const whatsappUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`;
+
+    // Record invite event (uses whatsapp_tap type with source=outreach_invite in metadata)
+    await supabase!.from("analytics_events").insert({
+      eventType: "whatsapp_tap",
+      vendorId,
+      metadata: { source: "outreach_invite", vendorPageUrl, waNumber },
+    });
+
+    res.json({ whatsappUrl, vendorPageUrl });
+  } catch (error) {
+    safeLogError("Outreach invite error", error);
+    res.status(500).json({ error: "Failed to process invite" });
   }
 });
 

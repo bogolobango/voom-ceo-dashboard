@@ -3,8 +3,9 @@
  * Full vendor table, pipeline status, and approval metrics
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import type { Vendor } from '../../lib/voomApi';
+import { fetchOutreachInvites, sendOutreachInvite } from '../../lib/voomApi';
 import { VendorDetailDrawer } from '../VendorDetailDrawer';
 import { InviteVendorModal } from '../InviteVendorModal';
 
@@ -26,6 +27,29 @@ export function Vendors({ vendors, onRefresh }: VendorsProps) {
   const [selectedVendorId, setSelectedVendorId] = useState<number | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [invitedMap, setInvitedMap] = useState<Map<number, string>>(new Map());
+  const [invitingId, setInvitingId] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetchOutreachInvites().then(rows => {
+      setInvitedMap(new Map(rows.map(r => [r.vendorId, r.invitedAt])));
+    }).catch(() => {});
+  }, []);
+
+  const handleInvite = useCallback(async (e: React.MouseEvent, vendor: Vendor) => {
+    e.stopPropagation();
+    if (invitingId !== null) return;
+    setInvitingId(vendor.id);
+    try {
+      const { whatsappUrl, vendorPageUrl: _url } = await sendOutreachInvite(vendor.id);
+      setInvitedMap(prev => new Map(prev).set(vendor.id, new Date().toISOString()));
+      window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+    } catch {
+      // silent — WhatsApp still openable manually
+    } finally {
+      setInvitingId(null);
+    }
+  }, [invitingId]);
 
   const filtered = useMemo(() => vendors.filter(v => {
     const matchStatus = filter === 'all' || v.status === filter;
@@ -132,12 +156,12 @@ export function Vendors({ vendors, onRefresh }: VendorsProps) {
         {/* Desktop Table Header — hidden on mobile */}
         <div className="vendor-table-header" style={{
           display: 'grid',
-          gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr',
+          gridTemplateColumns: '2fr 1fr 1fr 0.75fr 0.75fr 0.8fr',
           padding: '0.75rem 1.25rem',
           borderBottom: '1px solid rgba(79,70,229,0.06)',
           background: 'rgba(248,250,252,0.8)',
         }}>
-          {['Business Name', 'City', 'Status', 'Sales', 'Rating'].map(h => (
+          {['Business Name', 'City', 'Status', 'Sales', 'Rating', 'Invite'].map(h => (
             <p key={h} style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94A3B8', letterSpacing: '0.06em', textTransform: 'uppercase', margin: 0 }}>
               {h}
             </p>
@@ -183,17 +207,34 @@ export function Vendors({ vendors, onRefresh }: VendorsProps) {
                       padding: '0.15rem 0.5rem', borderRadius: 999, flexShrink: 0,
                     }}>{st.label}</span>
                   </div>
-                  <div style={{ display: 'flex', gap: '1rem', paddingLeft: '2.875rem' }}>
+                  <div style={{ display: 'flex', gap: '1rem', paddingLeft: '2.875rem', alignItems: 'center', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '0.72rem', color: '#64748B' }}>{vendor.city || '—'}</span>
                     <span style={{ fontSize: '0.72rem', color: '#64748B' }}>Sales: <strong style={{ color: '#0F172A', fontFamily: 'Space Grotesk' }}>{vendor.totalSales || 0}</strong></span>
                     {vendor.rating && <span style={{ fontSize: '0.72rem', color: '#F59E0B' }}>★ {vendor.rating}</span>}
+                    {vendor.userId === null && (() => {
+                      const invitedAt = invitedMap.get(vendor.id);
+                      return (
+                        <button
+                          onClick={e => handleInvite(e, vendor)}
+                          disabled={invitingId === vendor.id}
+                          style={{
+                            fontSize: '0.65rem', fontWeight: 600, color: invitedAt ? '#059669' : 'white',
+                            background: invitedAt ? 'rgba(5,150,105,0.12)' : '#25D366',
+                            border: invitedAt ? '1px solid rgba(5,150,105,0.3)' : 'none',
+                            padding: '0.15rem 0.5rem', borderRadius: 999, cursor: invitingId === vendor.id ? 'wait' : 'pointer',
+                          }}
+                        >
+                          {invitedAt ? `Sent ✓` : invitingId === vendor.id ? '…' : 'Invite'}
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
 
                 {/* Desktop table layout */}
                 <div className="vendor-desktop-row" style={{
                   display: 'grid',
-                  gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr',
+                  gridTemplateColumns: '2fr 1fr 1fr 0.75fr 0.75fr 0.8fr',
                   alignItems: 'center',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
@@ -218,6 +259,28 @@ export function Vendors({ vendors, onRefresh }: VendorsProps) {
                       <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0F172A', fontFamily: 'Space Grotesk' }}>{vendor.rating}</span></>
                     ) : <span style={{ fontSize: '0.75rem', color: '#CBD5E1' }}>—</span>}
                   </div>
+                  {/* Invite cell */}
+                  {vendor.userId === null ? (() => {
+                    const invitedAt = invitedMap.get(vendor.id);
+                    return (
+                      <button
+                        onClick={e => handleInvite(e, vendor)}
+                        disabled={invitingId === vendor.id}
+                        title={invitedAt ? `Invited ${new Date(invitedAt).toLocaleDateString()}` : 'Send WhatsApp invite with vendor page link'}
+                        style={{
+                          padding: '0.3rem 0.625rem', borderRadius: '0.5rem', fontSize: '0.7rem', fontWeight: 700,
+                          border: invitedAt ? '1px solid rgba(5,150,105,0.35)' : 'none',
+                          background: invitedAt ? 'rgba(5,150,105,0.1)' : '#25D366',
+                          color: invitedAt ? '#059669' : 'white',
+                          cursor: invitingId === vendor.id ? 'wait' : 'pointer',
+                          whiteSpace: 'nowrap', fontFamily: 'Plus Jakarta Sans',
+                          transition: 'opacity 0.15s',
+                        }}
+                      >
+                        {invitedAt ? 'Sent ✓' : invitingId === vendor.id ? '…' : 'Invite'}
+                      </button>
+                    );
+                  })() : <span style={{ fontSize: '0.7rem', color: '#CBD5E1' }}>Claimed</span>}
                 </div>
               </div>
             );

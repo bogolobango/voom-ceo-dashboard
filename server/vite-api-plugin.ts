@@ -450,7 +450,7 @@ export default function viteApiPlugin(): Plugin {
 
             const { data: allVendors, error } = await sb
               .from("vendors")
-              .select("id, businessName, phone, whatsapp, city, region, status, verified, rating, totalSales, tier, isFeatured, createdAt")
+              .select("id, userId, businessName, phone, whatsapp, city, region, status, verified, rating, totalSales, tier, isFeatured, createdAt")
               .order("createdAt", { ascending: false });
 
             if (error) throw error;
@@ -472,6 +472,7 @@ export default function viteApiPlugin(): Plugin {
 
             const vendorData = (allVendors || []).map((v: any) => ({
               id: v.id,
+              userId: v.userId ?? null,
               businessName: v.businessName,
               phone: v.phone,
               whatsapp: v.whatsapp,
@@ -851,6 +852,53 @@ export default function viteApiPlugin(): Plugin {
               .update(updateFields).eq("id", vendorId).select().single();
             if (error) throw error;
             return json(res, data);
+          }
+
+          // ─── /api/vendors/outreach-invites (GET) ───
+          if (url === "/api/vendors/outreach-invites" && req.method === "GET") {
+            if (!sb) return json(res, []);
+            const { data, error } = await sb
+              .from("analytics_events")
+              .select("vendorId, createdAt")
+              .eq("eventType", "whatsapp_tap")
+              .contains("metadata", { source: "outreach_invite" })
+              .not("vendorId", "is", null)
+              .order("createdAt", { ascending: false });
+            if (error) throw error;
+            const seen = new Map<number, string>();
+            for (const row of data || []) {
+              if (!seen.has(row.vendorId)) seen.set(row.vendorId, row.createdAt);
+            }
+            return json(res, Array.from(seen.entries()).map(([vendorId, invitedAt]) => ({ vendorId, invitedAt })));
+          }
+
+          // ─── /api/vendors/:id/outreach-invite (POST) ───
+          const outreachInviteMatch = url.match(/^\/api\/vendors\/(\d+)\/outreach-invite$/);
+          if (outreachInviteMatch && req.method === "POST") {
+            if (!sb) return json(res, { error: "Database not available" }, 503);
+            const vendorId = parseInt(outreachInviteMatch[1], 10);
+            const { data: vendor, error: vErr } = await sb
+              .from("vendors").select("id, businessName, phone, whatsapp, userId").eq("id", vendorId).single();
+            if (vErr || !vendor) return json(res, { error: "Vendor not found" }, 404);
+            const digitsOnly = vendor.phone.replace(/\D/g, "");
+            let waNumber = digitsOnly;
+            if (digitsOnly.startsWith("233")) waNumber = digitsOnly;
+            else if (digitsOnly.startsWith("0") && digitsOnly.length === 10) waNumber = "233" + digitsOnly.slice(1);
+            else if (digitsOnly.length === 9) waNumber = "233" + digitsOnly;
+            const vendorPageUrl = `https://voomparts.com/vendors/${vendorId}`;
+            const message =
+              `Hi! 👋 Your shop, *${vendor.businessName}*, is already live on VOOM Ghana — Ghana's online auto-parts marketplace.\n\n` +
+              `🔗 See your listing: ${vendorPageUrl}\n\n` +
+              `Buyers across all 16 regions of Ghana can already find you! Claim your free account to:\n` +
+              `✅ Manage your listings\n` +
+              `✅ Add more products\n` +
+              `✅ Get your verified badge\n` +
+              `✅ Receive direct buyer enquiries\n\n` +
+              `Reply *YES* and I'll send you the quick 5-min setup link — completely free!\n\n` +
+              `— VOOM Ghana Team 🚗`;
+            const whatsappUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`;
+            await sb.from("analytics_events").insert({ eventType: "whatsapp_tap", vendorId, metadata: { source: "outreach_invite", vendorPageUrl, waNumber } });
+            return json(res, { whatsappUrl, vendorPageUrl }, 200);
           }
 
           // ─── /api/vendors/invite (POST) ───
