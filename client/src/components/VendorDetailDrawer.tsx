@@ -845,6 +845,8 @@ export function VendorDetailDrawer({ vendorId, open: openProp, onOpenChange, onC
     queryKey: ['vendorDetail', vendorId],
     queryFn: () => fetchVendorDetail(vendorId!),
     enabled: isOpen && vendorId !== null,
+    retry: 2,
+    retryDelay: 1200,
   });
 
   const vendor = detailQ.data;
@@ -865,10 +867,22 @@ export function VendorDetailDrawer({ vendorId, open: openProp, onOpenChange, onC
           </SheetDescription>
         </SheetHeader>
 
-        {detailQ.isLoading ? (
+        {detailQ.isLoading || detailQ.isFetching && !vendor ? (
           <Spinner />
-        ) : !vendor ? (
-          <EmptyState message="Could not load vendor details. Make sure the database is connected." />
+        ) : detailQ.isError || !vendor ? (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', padding: '2rem 1.5rem', textAlign: 'center' }}>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0F172A', margin: 0 }}>Could not load vendor details</p>
+            <p style={{ fontSize: '0.775rem', color: '#94A3B8', margin: 0 }}>
+              {detailQ.error instanceof Error ? detailQ.error.message : 'Database connection issue — please retry'}
+            </p>
+            <button
+              onClick={() => detailQ.refetch()}
+              style={{ marginTop: '0.25rem', padding: '0.5rem 1.25rem', borderRadius: '0.75rem', background: 'linear-gradient(135deg,#4F46E5,#7C3AED)', color: 'white', fontSize: '0.8125rem', fontWeight: 700, border: 'none', cursor: 'pointer', fontFamily: 'Plus Jakarta Sans' }}
+            >
+              Retry
+            </button>
+          </div>
         ) : (
           <Tabs defaultValue={initialTab || "overview"} className="flex-1 !gap-0" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <TabsList className="!w-full !rounded-none !h-10" style={{ flexShrink: 0, padding: '0 1rem' }}>

@@ -627,10 +627,17 @@ export interface VendorSubscriptionEvent {
 
 // ─── Vendor Detail API Functions ───
 
-export async function fetchVendorDetail(vendorId: number): Promise<VendorDetail | null> {
-  const result = await apiGet<{ source: string; data: VendorDetail }>(`/api/vendors/${vendorId}`);
-  if (result?.source === 'database') return result.data;
-  return null;
+export async function fetchVendorDetail(vendorId: number): Promise<VendorDetail> {
+  const res = await fetch(`/api/vendors/${vendorId}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.error || `Failed to load vendor (HTTP ${res.status})`);
+  }
+  const result = await res.json() as { source: string; data: VendorDetail };
+  if (result?.source !== 'database' || !result.data) {
+    throw new Error('Vendor data unavailable — database not connected');
+  }
+  return result.data;
 }
 
 export async function fetchVendorOrders(vendorId: number): Promise<VendorOrder[]> {
