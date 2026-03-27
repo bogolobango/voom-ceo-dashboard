@@ -885,11 +885,11 @@ export function VendorDetailDrawer({ vendorId, open: openProp, onOpenChange, onC
           </div>
         ) : (
           <Tabs defaultValue={initialTab || "overview"} className="flex-1 !gap-0" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <TabsList className="!w-full !rounded-none !h-10" style={{ flexShrink: 0, padding: '0 1rem' }}>
-              <TabsTrigger value="overview" style={{ fontSize: '0.75rem' }}>Overview</TabsTrigger>
-              <TabsTrigger value="documents" style={{ fontSize: '0.75rem' }}>Documents</TabsTrigger>
-              <TabsTrigger value="orders" style={{ fontSize: '0.75rem' }}>Orders</TabsTrigger>
-              <TabsTrigger value="activity" style={{ fontSize: '0.75rem' }}>Activity</TabsTrigger>
+            <TabsList className="!w-full !rounded-none !h-10" style={{ flexShrink: 0, padding: '0 0.5rem', overflowX: 'auto' }}>
+              <TabsTrigger value="overview" style={{ fontSize: '0.72rem', whiteSpace: 'nowrap' }}>Overview</TabsTrigger>
+              <TabsTrigger value="documents" style={{ fontSize: '0.72rem', whiteSpace: 'nowrap' }}>Documents</TabsTrigger>
+              <TabsTrigger value="orders" style={{ fontSize: '0.72rem', whiteSpace: 'nowrap' }}>Orders</TabsTrigger>
+              <TabsTrigger value="activity" style={{ fontSize: '0.72rem', whiteSpace: 'nowrap' }}>Activity</TabsTrigger>
             </TabsList>
 
             <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>

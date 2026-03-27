@@ -190,10 +190,10 @@ export function MorningBriefing({ briefingData, vendors, kpis }: MorningBriefing
             { label: "MRR (GH₵)", value: mrr, prev: undefined, prefix: 'GH₵ ' },
           ].map((item, i) => (
             <div key={i} style={{
-              flex: '1 1 120px',
-              minWidth: '100px',
+              flex: '1 1 80px',
+              minWidth: '60px',
               textAlign: 'center',
-              padding: '0.375rem 0.5rem',
+              padding: '0.375rem 0.375rem',
             }}>
               <p style={{
                 fontSize: '0.65rem', fontWeight: 500, color: '#94A3B8',

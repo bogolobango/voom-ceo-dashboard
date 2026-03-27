@@ -162,7 +162,7 @@ function UsersTab({ onSelectUser }: { onSelectUser: (id: number) => void }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       {/* Visitor overview + behavior funnel cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
+      <div className="two-col-grid">
         {visitorData && <VisitorCard data={visitorData} />}
         {funnelData && <BehaviorFunnelCard data={funnelData} />}
       </div>
@@ -224,7 +224,7 @@ function UsersTab({ onSelectUser }: { onSelectUser: (id: number) => void }) {
       {isLoading ? (
         <LoadingRows />
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', width: '100%' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
             <thead>
               <tr>
@@ -429,7 +429,7 @@ function TopProductsTable({ products }: { products: ProductViewStat[] }) {
       {products.length === 0 ? (
         <p style={{ textAlign: 'center', color: '#94A3B8', fontSize: '0.82rem', padding: '1.5rem 0' }}>No product views recorded in this period</p>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', width: '100%' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 480 }}>
             <thead>
               <tr>
@@ -576,7 +576,7 @@ function ProductsTab({ timeRange }: { timeRange: TimeRange }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         <GlassCard><Skeleton h={120} /></GlassCard>
         <GlassCard><Skeleton h={200} /></GlassCard>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
+        <div className="two-col-grid">
           <GlassCard><Skeleton h={150} /></GlassCard>
           <GlassCard><Skeleton h={150} /></GlassCard>
         </div>
@@ -594,7 +594,7 @@ function ProductsTab({ timeRange }: { timeRange: TimeRange }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       <FunnelCard funnel={data.funnel} />
       <TopProductsTable products={data.topProducts} />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
+      <div className="two-col-grid">
         <DeadStockCard products={data.deadStock} timeLabel={TIME_LABELS[timeRange].toLowerCase()} />
         <CategoryBreakdown trends={data.categoryTrends} />
       </div>

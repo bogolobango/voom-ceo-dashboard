@@ -46,3 +46,8 @@ VITE_SUPABASE_ANON_KEY = "sb_publishable_lAf4LcGf1OmnYPZs7cu7mA_8AOvj52d"
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 120000
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["sh", "-c", "NODE_ENV=production node dist-server/index.js"]
+build = ["npm", "run", "build"]
