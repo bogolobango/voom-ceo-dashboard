@@ -35,6 +35,11 @@ function dbUnavailable(res: any): boolean {
   return false;
 }
 
+function isTableMissing(error: any): boolean {
+  const msg: string = error?.message || error?.details || "";
+  return msg.includes("schema cache") || msg.includes("does not exist") || error?.code === "42P01" || error?.code === "PGRST116";
+}
+
 // ─── Dashboard Stats ────────────────────────────────────────
 
 router.get("/api/stats", async (_req, res) => {
@@ -1660,7 +1665,10 @@ router.get("/api/whatsapp/groups", async (req, res) => {
       query = query.eq("status", status);
     }
     const { data, error } = await query;
-    if (error) throw error;
+    if (error) {
+      if (isTableMissing(error)) return res.json({ groups: [], total: 0 });
+      throw error;
+    }
     res.json({ groups: data ?? [], total: data?.length ?? 0 });
   } catch (error) {
     safeLogError("WhatsApp groups fetch error", error);
@@ -1783,7 +1791,10 @@ router.get("/api/whatsapp/leads", async (req, res) => {
     if (status) query = query.eq("status", status);
 
     const { data: leads, error } = await query;
-    if (error) throw error;
+    if (error) {
+      if (isTableMissing(error)) return res.json({ leads: [], total: 0 });
+      throw error;
+    }
 
     // Attach latest message per lead
     const leadsWithMessages = await Promise.all(
@@ -1818,7 +1829,10 @@ router.get("/api/whatsapp/leads/:id/messages", async (req, res) => {
       .eq("leadId", leadId)
       .order("sentAt", { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      if (isTableMissing(error)) return res.json({ messages: [] });
+      throw error;
+    }
     res.json({ messages: data ?? [] });
   } catch (error) {
     safeLogError("WhatsApp messages fetch error", error);
@@ -1888,7 +1902,10 @@ router.get("/api/whatsapp/templates", async (req, res) => {
       .select("*")
       .order("createdAt", { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      if (isTableMissing(error)) return res.json({ templates: [] });
+      throw error;
+    }
 
     // Seed defaults if empty
     if (!data || data.length === 0) {

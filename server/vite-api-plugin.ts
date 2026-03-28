@@ -43,6 +43,11 @@ function parseBody(req: any): Promise<any> {
   });
 }
 
+function isTableMissing(error: any): boolean {
+  const msg: string = error?.message || error?.details || "";
+  return msg.includes("schema cache") || msg.includes("does not exist") || error?.code === "42P01" || error?.code === "PGRST116";
+}
+
 export default function viteApiPlugin(): Plugin {
   return {
     name: "voom-api",
@@ -991,7 +996,10 @@ export default function viteApiPlugin(): Plugin {
           if (url === "/api/whatsapp/groups") {
             if (!sb) return json(res, { groups: [], total: 0 });
             const { data, error } = await sb.from("wa_groups").select("*").order("createdAt", { ascending: false });
-            if (error) throw error;
+            if (error) {
+              if (isTableMissing(error)) return json(res, { groups: [], total: 0 });
+              throw error;
+            }
             return json(res, { groups: data ?? [], total: data?.length ?? 0 });
           }
 
@@ -1031,7 +1039,10 @@ export default function viteApiPlugin(): Plugin {
           if (url === "/api/whatsapp/leads") {
             if (!sb) return json(res, { leads: [], total: 0 });
             const { data: leads, error } = await sb.from("wa_leads").select("*").order("createdAt", { ascending: false });
-            if (error) throw error;
+            if (error) {
+              if (isTableMissing(error)) return json(res, { leads: [], total: 0 });
+              throw error;
+            }
             const leadsWithMsgs = await Promise.all((leads || []).map(async (lead: any) => {
               const { data: msgs } = await sb.from("wa_messages").select("*").eq("leadId", lead.id).order("sentAt", { ascending: false }).limit(1);
               return { ...lead, latestMessage: msgs?.[0] ?? null };
@@ -1045,7 +1056,10 @@ export default function viteApiPlugin(): Plugin {
             if (!sb) return json(res, { messages: [] });
             const leadId = parseInt(waLeadMsgsMatch[1], 10);
             const { data, error } = await sb.from("wa_messages").select("*").eq("leadId", leadId).order("sentAt", { ascending: true });
-            if (error) throw error;
+            if (error) {
+              if (isTableMissing(error)) return json(res, { messages: [] });
+              throw error;
+            }
             return json(res, { messages: data ?? [] });
           }
 
@@ -1075,7 +1089,10 @@ export default function viteApiPlugin(): Plugin {
           if (url === "/api/whatsapp/templates") {
             if (!sb) return json(res, { templates: [] });
             const { data, error } = await sb.from("wa_templates").select("*").order("createdAt", { ascending: true });
-            if (error) throw error;
+            if (error) {
+              if (isTableMissing(error)) return json(res, { templates: [] });
+              throw error;
+            }
             if (!data || data.length === 0) {
               const defaults = [
                 { name: "Group Intro — Car Parts", category: "marketing", body: "👋 Hello everyone! We're VOOM Parts — Ghana's new online marketplace for genuine auto spare parts.\n\nFind parts for Toyota, Hyundai, Nissan, Mercedes, and more from verified vendors across Ghana.\n\n🔧 Vendors: List your parts FREE at voomparts.com\n🛒 Buyers: Search 10,000+ parts at voomparts.com\n\nDelivery available across all 16 regions. 🇬🇭", variables: [], isDefault: true, status: "local" },
