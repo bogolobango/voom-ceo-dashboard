@@ -342,3 +342,99 @@ export type PartRequest = typeof partRequests.$inferSelect;
 export type AnalyticsEvent = typeof analyticsEvents.$inferSelect;
 export type VendorPayout = typeof vendorPayouts.$inferSelect;
 export type SubscriptionEvent = typeof subscriptionEvents.$inferSelect;
+
+// ── WhatsApp Acquisition ────────────────────────────────────
+
+export const waGroupStatusEnum = pgEnum("wa_group_status", ["discovered", "approved", "joining", "joined", "rejected", "left", "failed"]);
+export const waLeadTypeEnum = pgEnum("wa_lead_type", ["unknown", "vendor", "customer"]);
+export const waLeadStatusEnum = pgEnum("wa_lead_status", ["new", "contacted", "qualified", "converted", "dead"]);
+export const waMessageDirectionEnum = pgEnum("wa_message_direction", ["inbound", "outbound"]);
+export const waBroadcastStatusEnum = pgEnum("wa_broadcast_status", ["draft", "pending_approval", "approved", "sending", "sent", "failed"]);
+
+export const waGroups = pgTable("wa_groups", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }),
+  inviteLink: varchar("inviteLink", { length: 500 }).notNull().unique(),
+  source: varchar("source", { length: 100 }),
+  sourceUrl: text("sourceUrl"),
+  keywords: json("keywords").$type<string[]>(),
+  status: waGroupStatusEnum("status").default("discovered").notNull(),
+  memberCount: integer("memberCount").default(0),
+  waGroupId: varchar("waGroupId", { length: 255 }),
+  joinedAt: timestamp("joinedAt"),
+  lastBroadcastAt: timestamp("lastBroadcastAt"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+export const waLeads = pgTable("wa_leads", {
+  id: serial("id").primaryKey(),
+  phone: varchar("phone", { length: 30 }).notNull(),
+  name: varchar("name", { length: 255 }),
+  profilePicUrl: text("profilePicUrl"),
+  type: waLeadTypeEnum("type").default("unknown").notNull(),
+  status: waLeadStatusEnum("status").default("new").notNull(),
+  sourceGroupId: integer("sourceGroupId"),
+  qualificationNotes: text("qualificationNotes"),
+  convertedVendorId: integer("convertedVendorId"),
+  lastContactedAt: timestamp("lastContactedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+export const waMessages = pgTable("wa_messages", {
+  id: serial("id").primaryKey(),
+  leadId: integer("leadId"),
+  groupId: integer("groupId"),
+  waMessageId: varchar("waMessageId", { length: 255 }),
+  direction: waMessageDirectionEnum("direction").notNull(),
+  content: text("content").notNull(),
+  mediaUrl: text("mediaUrl"),
+  status: varchar("status", { length: 30 }).default("sent"),
+  sentAt: timestamp("sentAt").defaultNow().notNull(),
+  deliveredAt: timestamp("deliveredAt"),
+  readAt: timestamp("readAt"),
+});
+
+export const waBroadcasts = pgTable("wa_broadcasts", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  templateName: varchar("templateName", { length: 100 }),
+  messageBody: text("messageBody").notNull(),
+  targetGroupIds: json("targetGroupIds").$type<number[]>(),
+  status: waBroadcastStatusEnum("status").default("draft").notNull(),
+  sentCount: integer("sentCount").default(0),
+  deliveredCount: integer("deliveredCount").default(0),
+  readCount: integer("readCount").default(0),
+  scheduledAt: timestamp("scheduledAt"),
+  sentAt: timestamp("sentAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+export const waTemplates = pgTable("wa_templates", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(),
+  category: varchar("category", { length: 50 }).default("marketing"),
+  body: text("body").notNull(),
+  variables: json("variables").$type<string[]>(),
+  metaTemplateId: varchar("metaTemplateId", { length: 255 }),
+  status: varchar("status", { length: 30 }).default("local"),
+  isDefault: boolean("isDefault").default(false),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+export const waScrapeJobs = pgTable("wa_scrape_jobs", {
+  id: serial("id").primaryKey(),
+  keywords: json("keywords").$type<string[]>().notNull(),
+  platforms: json("platforms").$type<string[]>().notNull(),
+  status: varchar("status", { length: 30 }).default("pending").notNull(),
+  linksFound: integer("linksFound").default(0),
+  linksNew: integer("linksNew").default(0),
+  errorMessage: text("errorMessage"),
+  startedAt: timestamp("startedAt"),
+  completedAt: timestamp("completedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
