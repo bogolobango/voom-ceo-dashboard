@@ -17,6 +17,7 @@ interface SidebarProps {
   onNavigate: (section: string) => void;
   liveStatus: 'live' | 'warn' | 'error';
   verificationCount?: number;
+  newLeadsCount?: number;
 }
 
 function VoomLogo() {
@@ -105,7 +106,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'verification', label: 'Doc Review', icon: <IconVerification /> },
 ];
 
-export function Sidebar({ activeSection, onNavigate, liveStatus, verificationCount }: SidebarProps) {
+export function Sidebar({ activeSection, onNavigate, liveStatus, verificationCount, newLeadsCount }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -235,7 +236,7 @@ export function Sidebar({ activeSection, onNavigate, liveStatus, verificationCou
           >
             <span className="nav-icon" style={{ flexShrink: 0 }}>{item.icon}</span>
             {!collapsed && <span>{item.label}</span>}
-            {!collapsed && (item.badge || (item.id === 'verification' && verificationCount && verificationCount > 0)) && (
+            {!collapsed && (item.badge || (item.id === 'verification' && verificationCount && verificationCount > 0) || (item.id === 'crm' && newLeadsCount && newLeadsCount > 0)) && (
               <span style={{
                 marginLeft: 'auto', minWidth: 20, height: 20,
                 borderRadius: 999,
@@ -245,7 +246,7 @@ export function Sidebar({ activeSection, onNavigate, liveStatus, verificationCou
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 padding: '0 6px',
               }}>
-                {item.id === 'verification' ? verificationCount : item.badge}
+                {item.id === 'verification' ? verificationCount : item.id === 'crm' && newLeadsCount ? newLeadsCount : item.badge}
               </span>
             )}
           </button>
