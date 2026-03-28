@@ -62,6 +62,33 @@ Environment variables (set in Replit secrets):
 
 **Note:** This project uses Vite (not Next.js), so the client uses `import.meta.env.VITE_*` instead of `process.env.NEXT_PUBLIC_*`. There is no SSR/server-side Supabase client — the Express API server connects to PostgreSQL via Drizzle ORM instead.
 
+## WhatsApp Acquisition Module
+
+Added in the `WhatsAppAcquisition.tsx` feature (sidebar: "Outreach CRM"). This module manages:
+
+- **Discovery Radar** — scrape WhatsApp group invite links from Google/Facebook/etc.
+- **Group Manager** — approve, join, and broadcast to discovered groups
+- **Lead Inbox** — qualify and convert leads into vendors
+
+### Required Database Tables
+
+The WhatsApp module requires 6 new tables in Supabase that are **not yet created**. To activate full functionality:
+
+1. Open `supabase-wa-migration.sql` in the project root
+2. Go to your Supabase dashboard → SQL Editor
+3. Paste and run the SQL
+
+Until the migration is run, all WhatsApp endpoints return empty arrays (graceful fallback — no 500 errors).
+
+### WhatsApp API Keys (Optional)
+
+Set in Replit secrets for live broadcasting:
+- `WA_PHONE_NUMBER_ID` — Meta Cloud API phone number ID
+- `WA_ACCESS_TOKEN` — Meta permanent access token
+- `WA_WEBHOOK_TOKEN` — Webhook verification token
+- `SERP_API_KEY` — For real group discovery (mock data used if absent)
+- `APIFY_API_KEY` — For Apify-based scraping (optional)
+
 ## Key Dependencies
 
 - `drizzle-orm` + `pg` — PostgreSQL ORM
