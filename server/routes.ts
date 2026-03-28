@@ -1607,48 +1607,66 @@ router.post("/api/whatsapp/scrape", async (req, res) => {
       useMockIfNoKeys: true,
     });
 
-    // Upsert into wa_groups
+    // Check if wa_groups table exists before upsert
+    const { error: tableTestErr } = await supabase!.from("wa_groups").select("id").limit(1);
+    const tableAvailable = !tableTestErr || !isTableMissing(tableTestErr);
+
     let linksNew = 0;
     const newGroups: any[] = [];
-    for (const g of discovered) {
-      const { data: existing } = await supabase!
-        .from("wa_groups")
-        .select("id")
-        .eq("inviteLink", g.inviteLink)
-        .maybeSingle();
 
-      if (!existing) {
-        const { data: inserted } = await supabase!
+    if (tableAvailable) {
+      for (const g of discovered) {
+        const { data: existing } = await supabase!
           .from("wa_groups")
-          .insert({
-            name: g.name || null,
-            inviteLink: g.inviteLink,
-            source: g.source,
-            sourceUrl: g.sourceUrl,
-            keywords: g.keywords,
-            status: "discovered",
-          })
-          .select()
-          .single();
-        if (inserted) {
-          newGroups.push(inserted);
-          linksNew++;
+          .select("id")
+          .eq("inviteLink", g.inviteLink)
+          .maybeSingle();
+
+        if (!existing) {
+          const { data: inserted } = await supabase!
+            .from("wa_groups")
+            .insert({
+              name: g.name || null,
+              inviteLink: g.inviteLink,
+              source: g.source,
+              sourceUrl: g.sourceUrl,
+              keywords: g.keywords,
+              status: "discovered",
+            })
+            .select()
+            .single();
+          if (inserted) {
+            newGroups.push(inserted);
+            linksNew++;
+          }
         }
       }
+
+      await supabase!.from("wa_scrape_jobs").insert({
+        keywords,
+        platforms,
+        status: "completed",
+        linksFound: discovered.length,
+        linksNew,
+        startedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+      }).catch(() => {});
     }
 
-    // Log scrape job
-    await supabase!.from("wa_scrape_jobs").insert({
-      keywords,
-      platforms,
-      status: "completed",
-      linksFound: discovered.length,
-      linksNew,
-      startedAt: new Date().toISOString(),
-      completedAt: new Date().toISOString(),
-    });
+    const useDemo = !tableAvailable;
+    const demoGroups = discovered.map((g, i) => ({
+      id: i + 1, ...g, status: "discovered", memberCount: 0, waGroupId: null,
+      joinedAt: null, lastBroadcastAt: null, notes: null,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    }));
 
-    res.json({ jobId: Date.now(), linksFound: discovered.length, linksNew, groups: newGroups });
+    res.json({
+      jobId: Date.now(),
+      linksFound: discovered.length,
+      linksNew: useDemo ? discovered.length : linksNew,
+      groups: useDemo ? demoGroups : newGroups,
+      demo: useDemo,
+    });
   } catch (error) {
     safeLogError("WhatsApp scrape error", error);
     res.status(500).json({ error: "Scrape failed" });

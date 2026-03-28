@@ -71,7 +71,14 @@ function DiscoveryRadar() {
     mutationFn: () => scrapeWaGroups(keywords.split(',').map(k => k.trim()).filter(Boolean), selectedPlatforms),
     onSuccess: (data) => {
       toast.success(`Found ${data.linksNew} new groups (${data.linksFound} total scanned)`);
-      queryClient.invalidateQueries({ queryKey: ['wa-groups'] });
+      if (data.demo && data.groups && data.groups.length > 0) {
+        queryClient.setQueryData(['wa-groups'], (old: WaGroup[] | undefined) => {
+          const existing = (old || []).filter(g => !data.groups.find((ng: WaGroup) => ng.inviteLink === g.inviteLink));
+          return [...data.groups, ...existing];
+        });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['wa-groups'] });
+      }
     },
     onError: () => toast.error('Scan failed — check console for details'),
   });

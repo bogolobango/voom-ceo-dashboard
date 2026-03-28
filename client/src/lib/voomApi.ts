@@ -827,6 +827,7 @@ export interface WaScrapeResult {
   linksFound: number;
   linksNew: number;
   groups: WaGroup[];
+  demo?: boolean;
 }
 
 // ─── WhatsApp API Functions ──────────────────────────────────

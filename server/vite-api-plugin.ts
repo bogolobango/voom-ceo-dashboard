@@ -973,23 +973,44 @@ export default function viteApiPlugin(): Plugin {
 
             let linksNew = 0;
             const newGroups: any[] = [];
+            let tableAvailable = false;
+
             if (sb) {
-              for (const g of discovered) {
-                const { data: existing } = await sb.from("wa_groups").select("id").eq("inviteLink", g.inviteLink).maybeSingle();
-                if (!existing) {
-                  const { data: inserted } = await sb.from("wa_groups").insert({
-                    name: g.name || null, inviteLink: g.inviteLink, source: g.source,
-                    sourceUrl: g.sourceUrl, keywords: g.keywords, status: "discovered",
-                  }).select().single();
-                  if (inserted) { newGroups.push(inserted); linksNew++; }
+              const { error: testErr } = await sb.from("wa_groups").select("id").limit(1);
+              tableAvailable = !testErr || !isTableMissing(testErr);
+
+              if (tableAvailable) {
+                for (const g of discovered) {
+                  const { data: existing } = await sb.from("wa_groups").select("id").eq("inviteLink", g.inviteLink).maybeSingle();
+                  if (!existing) {
+                    const { data: inserted } = await sb.from("wa_groups").insert({
+                      name: g.name || null, inviteLink: g.inviteLink, source: g.source,
+                      sourceUrl: g.sourceUrl, keywords: g.keywords, status: "discovered",
+                    }).select().single();
+                    if (inserted) { newGroups.push(inserted); linksNew++; }
+                  }
                 }
+                await sb.from("wa_scrape_jobs").insert({
+                  keywords, platforms, status: "completed", linksFound: discovered.length,
+                  linksNew, startedAt: new Date().toISOString(), completedAt: new Date().toISOString(),
+                }).catch(() => {});
               }
-              await sb.from("wa_scrape_jobs").insert({
-                keywords, platforms, status: "completed", linksFound: discovered.length,
-                linksNew, startedAt: new Date().toISOString(), completedAt: new Date().toISOString(),
-              });
             }
-            return json(res, { jobId: Date.now(), linksFound: discovered.length, linksNew, groups: sb ? newGroups : discovered.map((g, i) => ({ id: i + 1, ...g, status: "discovered", memberCount: 0, waGroupId: null, joinedAt: null, lastBroadcastAt: null, notes: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })) });
+
+            const useDemo = !sb || !tableAvailable;
+            const demoGroups = discovered.map((g, i) => ({
+              id: i + 1, ...g, status: "discovered", memberCount: 0, waGroupId: null,
+              joinedAt: null, lastBroadcastAt: null, notes: null,
+              createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+            }));
+
+            return json(res, {
+              jobId: Date.now(),
+              linksFound: discovered.length,
+              linksNew: useDemo ? discovered.length : linksNew,
+              groups: useDemo ? demoGroups : newGroups,
+              demo: useDemo,
+            });
           }
 
           // GET /api/whatsapp/groups
