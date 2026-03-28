@@ -32,6 +32,9 @@ export const users = pgTable("users", {
   loginMethod: varchar("loginMethod", { length: 64 }),
   passwordHash: text("passwordHash"),
   role: userRoleEnum("role").default("user").notNull(),
+  isVerified: boolean("isVerified").default(false),
+  otpCode: varchar("otpCode", { length: 8 }),
+  otpExpiresAt: timestamp("otpExpiresAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -121,6 +124,7 @@ export const products = pgTable("products", {
   vehicleModel: varchar("vehicleModel", { length: 100 }),
   yearFrom: integer("yearFrom"),
   yearTo: integer("yearTo"),
+  oemPartNumber: varchar("oemPartNumber", { length: 255 }),
   quantity: integer("quantity").default(0).notNull(),
   minOrderQty: integer("minOrderQty").default(1),
   images: json("images").$type<string[]>(),
@@ -189,6 +193,7 @@ export const reviews = pgTable("reviews", {
   productId: integer("productId"),
   rating: integer("rating").notNull(),
   comment: text("comment"),
+  verifiedPurchase: boolean("verifiedPurchase").default(false),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

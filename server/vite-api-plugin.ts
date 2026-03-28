@@ -543,7 +543,7 @@ export default function viteApiPlugin(): Plugin {
 
             const { data: allProducts, error } = await sb
               .from("products")
-              .select("id, vendorId, categoryId, name, price, currency, brand, condition, vehicleMake, vehicleModel, quantity, status, views, whatsappTaps, createdAt")
+              .select("id, vendorId, categoryId, name, price, currency, brand, condition, vehicleMake, vehicleModel, oemPartNumber, quantity, status, views, whatsappTaps, createdAt")
               .order("createdAt", { ascending: false });
 
             if (error) throw error;
@@ -564,6 +564,7 @@ export default function viteApiPlugin(): Plugin {
               condition: p.condition,
               vehicleMake: p.vehicleMake,
               vehicleModel: p.vehicleModel,
+              oemPartNumber: p.oemPartNumber ?? null,
               quantity: p.quantity,
               status: p.status,
               views: p.views,

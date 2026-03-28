@@ -86,6 +86,7 @@ export interface Product {
   condition: string;
   vehicleMake: string | null;
   vehicleModel: string | null;
+  oemPartNumber: string | null;
   quantity: number;
   status: string;
   views: number | null;

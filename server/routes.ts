@@ -228,7 +228,7 @@ router.get("/api/products", async (req, res) => {
   try {
     const { data: allProducts, error } = await supabase!
       .from("products")
-      .select("id, vendorId, categoryId, name, price, currency, brand, condition, vehicleMake, vehicleModel, quantity, status, views, whatsappTaps, createdAt")
+      .select("id, vendorId, categoryId, name, price, currency, brand, condition, vehicleMake, vehicleModel, oemPartNumber, quantity, status, views, whatsappTaps, createdAt")
       .order("createdAt", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -254,6 +254,7 @@ router.get("/api/products", async (req, res) => {
       condition: p.condition,
       vehicleMake: p.vehicleMake,
       vehicleModel: p.vehicleModel,
+      oemPartNumber: p.oemPartNumber ?? null,
       quantity: p.quantity,
       status: p.status,
       views: p.views,

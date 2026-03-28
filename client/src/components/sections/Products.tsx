@@ -58,6 +58,8 @@ export function Products({ kpis, products }: ProductsProps) {
     const withViews = products.filter(p => p.views != null);
     return withViews.length > 0 ? Math.round(withViews.reduce((s, p) => s + (p.views || 0), 0) / withViews.length) : 0;
   }, [products]);
+  const oemCount = useMemo(() => products.filter(p => p.oemPartNumber).length, [products]);
+  const oemPct = products.length > 0 ? Math.round((oemCount / products.length) * 100) : 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -116,14 +118,15 @@ export function Products({ kpis, products }: ProductsProps) {
         </GlassSection>
       </div>
 
-      {/* Condition breakdown */}
+      {/* Condition breakdown + OEM coverage */}
       <GlassSection>
-        <SectionTitle sub="Product condition distribution">Inventory Health</SectionTitle>
-        <div className="three-col-grid">
+        <SectionTitle sub="Product condition distribution and OEM coverage">Inventory Health</SectionTitle>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.875rem' }}>
           {[
-            { label: 'New Parts', ...conditionDist.new, color: '#059669' },
-            { label: 'Used Parts', ...conditionDist.used, color: '#D97706' },
-            { label: 'Refurbished', ...conditionDist.refurbished, color: '#4F46E5' },
+            { label: 'New Parts', ...conditionDist.new, color: '#059669', sub: `${conditionDist.new.count} listings` },
+            { label: 'Used Parts', ...conditionDist.used, color: '#D97706', sub: `${conditionDist.used.count} listings` },
+            { label: 'Refurbished', ...conditionDist.refurbished, color: '#4F46E5', sub: `${conditionDist.refurbished.count} listings` },
+            { label: 'OEM Coded', pct: oemPct, color: '#0EA5E9', sub: `${oemCount} with part #` },
           ].map(item => (
             <div key={item.label} style={{
               padding: '1rem',
@@ -136,7 +139,7 @@ export function Products({ kpis, products }: ProductsProps) {
                 {item.pct}%
               </p>
               <p style={{ fontSize: '0.8125rem', color: '#475569', marginTop: '0.375rem', fontWeight: 500 }}>{item.label}</p>
-              <p style={{ fontSize: '0.75rem', color: '#94A3B8', marginTop: '0.125rem' }}>{item.count} listings</p>
+              <p style={{ fontSize: '0.75rem', color: '#94A3B8', marginTop: '0.125rem' }}>{item.sub}</p>
             </div>
           ))}
         </div>
