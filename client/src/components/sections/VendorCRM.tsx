@@ -7,6 +7,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import type { Vendor, DashboardKPIs } from '../../lib/voomApi';
 import { fetchOutreachInvites, sendOutreachInvite } from '../../lib/voomApi';
+import { WhatsAppAcquisition } from './WhatsAppAcquisition';
 
 interface VendorCRMProps {
   vendors: Vendor[];
@@ -94,6 +95,7 @@ function GlassSection({ children, style }: { children: React.ReactNode; style?: 
 }
 
 export function VendorCRM({ vendors, kpis }: VendorCRMProps) {
+  const [crmTab, setCrmTab] = useState<'pipeline' | 'whatsapp'>('pipeline');
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState<'businessName' | 'city' | 'status' | 'tier' | 'totalListings'>('businessName');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -178,10 +180,38 @@ export function VendorCRM({ vendors, kpis }: VendorCRMProps) {
             Outreach CRM
           </h2>
           <p style={{ fontSize: '0.8125rem', color: '#94A3B8', marginTop: '0.25rem' }}>
-            Vendor acquisition pipeline · {kpis.totalVendors} vendors loaded · 97 pre-loaded from Abossey Okai
+            {crmTab === 'pipeline' ? `Vendor acquisition pipeline · ${kpis.totalVendors} vendors loaded` : 'WhatsApp group discovery & outreach'}
           </p>
         </div>
       </div>
+
+      {/* ── Tab Switcher ── */}
+      <div style={{
+        display: 'flex', gap: '0.5rem',
+        background: 'rgba(79,70,229,0.06)', borderRadius: '0.875rem',
+        padding: '0.25rem', width: 'fit-content',
+      }}>
+        {(['pipeline', 'whatsapp'] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setCrmTab(tab)}
+            style={{
+              padding: '0.4rem 1rem', borderRadius: '0.625rem', border: 'none',
+              cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600,
+              fontFamily: 'Plus Jakarta Sans, sans-serif',
+              background: crmTab === tab ? '#4F46E5' : 'transparent',
+              color: crmTab === tab ? 'white' : '#64748B',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            {tab === 'pipeline' ? 'Vendor Pipeline' : 'WhatsApp Acquisition'}
+          </button>
+        ))}
+      </div>
+
+      {crmTab === 'whatsapp' && <WhatsAppAcquisition />}
+
+      {crmTab === 'pipeline' && <>
 
       {/* ── Pipeline Funnel ── */}
       <GlassSection>
@@ -500,6 +530,7 @@ export function VendorCRM({ vendors, kpis }: VendorCRMProps) {
       <p style={{ fontSize: '0.75rem', color: '#94A3B8', textAlign: 'center' }}>
         Showing {sortedVendors.length} of {vendors.length} vendors · CRM pipeline derived from vendor status data
       </p>
+      </>}
     </div>
   );
 }

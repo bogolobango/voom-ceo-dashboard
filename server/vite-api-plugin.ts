@@ -4,6 +4,8 @@
  */
 import type { Plugin, ViteDevServer } from "vite";
 import { createClient } from "@supabase/supabase-js";
+import { discoverWhatsAppGroups } from "./whatsapp-scraper.js";
+import { broadcastToGroups, verifyWebhookToken, processLeadMessage, parseWebhookPayload, sendTextMessage } from "./whatsapp-api.js";
 
 let _supabase: ReturnType<typeof createClient> | null = null;
 
@@ -948,6 +950,158 @@ export default function viteApiPlugin(): Plugin {
             const { data, error } = await sb.from("notifications").insert(insertFields).select().single();
             if (error) throw error;
             return json(res, data, 201);
+          }
+
+          // ─── WhatsApp Acquisition Routes ───
+
+          // POST /api/whatsapp/scrape
+          if (url === "/api/whatsapp/scrape" && req.method === "POST") {
+            const body = await parseBody(req);
+            const { keywords = [], platforms = [] } = body;
+            if (!Array.isArray(keywords) || keywords.length === 0) return json(res, { error: "keywords required" }, 400);
+
+            const discovered = await discoverWhatsAppGroups({
+              keywords, platforms: platforms.length > 0 ? platforms : ["google", "facebook"],
+              serpApiKey: process.env.SERP_API_KEY, apifyApiKey: process.env.APIFY_API_KEY,
+              useMockIfNoKeys: true,
+            });
+
+            let linksNew = 0;
+            const newGroups: any[] = [];
+            if (sb) {
+              for (const g of discovered) {
+                const { data: existing } = await sb.from("wa_groups").select("id").eq("inviteLink", g.inviteLink).maybeSingle();
+                if (!existing) {
+                  const { data: inserted } = await sb.from("wa_groups").insert({
+                    name: g.name || null, inviteLink: g.inviteLink, source: g.source,
+                    sourceUrl: g.sourceUrl, keywords: g.keywords, status: "discovered",
+                  }).select().single();
+                  if (inserted) { newGroups.push(inserted); linksNew++; }
+                }
+              }
+              await sb.from("wa_scrape_jobs").insert({
+                keywords, platforms, status: "completed", linksFound: discovered.length,
+                linksNew, startedAt: new Date().toISOString(), completedAt: new Date().toISOString(),
+              });
+            }
+            return json(res, { jobId: Date.now(), linksFound: discovered.length, linksNew, groups: sb ? newGroups : discovered.map((g, i) => ({ id: i + 1, ...g, status: "discovered", memberCount: 0, waGroupId: null, joinedAt: null, lastBroadcastAt: null, notes: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })) });
+          }
+
+          // GET /api/whatsapp/groups
+          if (url === "/api/whatsapp/groups") {
+            if (!sb) return json(res, { groups: [], total: 0 });
+            const { data, error } = await sb.from("wa_groups").select("*").order("createdAt", { ascending: false });
+            if (error) throw error;
+            return json(res, { groups: data ?? [], total: data?.length ?? 0 });
+          }
+
+          // PATCH /api/whatsapp/groups/:id/status
+          const waGroupStatusMatch = url.match(/^\/api\/whatsapp\/groups\/(\d+)\/status$/);
+          if (waGroupStatusMatch && req.method === "PATCH") {
+            if (!sb) return json(res, { error: "Database not available" }, 503);
+            const groupId = parseInt(waGroupStatusMatch[1], 10);
+            const body = await parseBody(req);
+            const { status, notes } = body;
+            const updateFields: Record<string, any> = { status, updatedAt: new Date().toISOString() };
+            if (notes !== undefined) updateFields.notes = notes;
+            if (status === "joined") updateFields.joinedAt = new Date().toISOString();
+            const { data, error } = await sb.from("wa_groups").update(updateFields).eq("id", groupId).select().single();
+            if (error) throw error;
+            return json(res, data);
+          }
+
+          // POST /api/whatsapp/broadcast
+          if (url === "/api/whatsapp/broadcast" && req.method === "POST") {
+            if (!sb) return json(res, { error: "Database not available" }, 503);
+            const body = await parseBody(req);
+            const { name, messageBody, targetGroupIds } = body;
+            if (!name || !messageBody || !Array.isArray(targetGroupIds)) return json(res, { error: "Missing fields" }, 400);
+            const { data: broadcast, error: insertErr } = await sb.from("wa_broadcasts").insert({
+              name, messageBody, targetGroupIds, status: "sending",
+            }).select().single();
+            if (insertErr) throw insertErr;
+            const results = await broadcastToGroups(targetGroupIds.map(String), messageBody);
+            const sentCount = results.filter(r => r.success).length;
+            await sb.from("wa_broadcasts").update({ status: "sent", sentCount, sentAt: new Date().toISOString() }).eq("id", broadcast.id);
+            await sb.from("wa_groups").update({ lastBroadcastAt: new Date().toISOString() }).in("id", targetGroupIds);
+            return json(res, { ...broadcast, status: "sent", sentCount, sentAt: new Date().toISOString() });
+          }
+
+          // GET /api/whatsapp/leads
+          if (url === "/api/whatsapp/leads") {
+            if (!sb) return json(res, { leads: [], total: 0 });
+            const { data: leads, error } = await sb.from("wa_leads").select("*").order("createdAt", { ascending: false });
+            if (error) throw error;
+            const leadsWithMsgs = await Promise.all((leads || []).map(async (lead: any) => {
+              const { data: msgs } = await sb.from("wa_messages").select("*").eq("leadId", lead.id).order("sentAt", { ascending: false }).limit(1);
+              return { ...lead, latestMessage: msgs?.[0] ?? null };
+            }));
+            return json(res, { leads: leadsWithMsgs, total: leadsWithMsgs.length });
+          }
+
+          // GET /api/whatsapp/leads/:id/messages
+          const waLeadMsgsMatch = url.match(/^\/api\/whatsapp\/leads\/(\d+)\/messages$/);
+          if (waLeadMsgsMatch) {
+            if (!sb) return json(res, { messages: [] });
+            const leadId = parseInt(waLeadMsgsMatch[1], 10);
+            const { data, error } = await sb.from("wa_messages").select("*").eq("leadId", leadId).order("sentAt", { ascending: true });
+            if (error) throw error;
+            return json(res, { messages: data ?? [] });
+          }
+
+          // PATCH /api/whatsapp/leads/:id
+          const waLeadPatchMatch = url.match(/^\/api\/whatsapp\/leads\/(\d+)$/);
+          if (waLeadPatchMatch && req.method === "PATCH") {
+            if (!sb) return json(res, { error: "Database not available" }, 503);
+            const leadId = parseInt(waLeadPatchMatch[1], 10);
+            const body = await parseBody(req);
+            const { type, status, qualificationNotes } = body;
+            const updateFields: Record<string, any> = { updatedAt: new Date().toISOString() };
+            if (type) updateFields.type = type;
+            if (status) updateFields.status = status;
+            if (qualificationNotes !== undefined) updateFields.qualificationNotes = qualificationNotes;
+            const { data: lead, error } = await sb.from("wa_leads").update(updateFields).eq("id", leadId).select().single();
+            if (error) throw error;
+            if (type === "vendor" && status === "converted" && lead && !lead.convertedVendorId) {
+              const { data: newVendor } = await sb.from("vendors").insert({
+                userId: 0, businessName: lead.name || `Lead ${lead.phone}`, phone: lead.phone, whatsapp: lead.phone, status: "pending",
+              }).select().single();
+              if (newVendor) { await sb.from("wa_leads").update({ convertedVendorId: newVendor.id }).eq("id", leadId); lead.convertedVendorId = newVendor.id; }
+            }
+            return json(res, lead);
+          }
+
+          // GET /api/whatsapp/templates
+          if (url === "/api/whatsapp/templates") {
+            if (!sb) return json(res, { templates: [] });
+            const { data, error } = await sb.from("wa_templates").select("*").order("createdAt", { ascending: true });
+            if (error) throw error;
+            if (!data || data.length === 0) {
+              const defaults = [
+                { name: "Group Intro — Car Parts", category: "marketing", body: "👋 Hello everyone! We're VOOM Parts — Ghana's new online marketplace for genuine auto spare parts.\n\nFind parts for Toyota, Hyundai, Nissan, Mercedes, and more from verified vendors across Ghana.\n\n🔧 Vendors: List your parts FREE at voomparts.com\n🛒 Buyers: Search 10,000+ parts at voomparts.com\n\nDelivery available across all 16 regions. 🇬🇭", variables: [], isDefault: true, status: "local" },
+                { name: "Vendor Recruitment", category: "marketing", body: "🚗 Attention spare parts dealers & mechanics in Ghana!\n\nAre you selling auto parts? List your inventory on voomparts.com and reach buyers from Accra, Kumasi, Takoradi, and beyond — for FREE.\n\n✅ Free listing (up to 10 parts)\n✅ WhatsApp buyer inquiries directly to you\n✅ No commission on your first 3 sales\n\nRegister now: voomparts.com/vendor", variables: [], isDefault: false, status: "local" },
+                { name: "Part Request Promo", category: "marketing", body: "🔍 Can't find the car part you need?\n\nPost a *Part Request* on voomparts.com — describe the part, your car model, and your budget. Verified vendors across Ghana will contact you directly with prices!\n\nNo more calling around. Let the parts come to you. 🇬🇭\n👉 voomparts.com", variables: [], isDefault: false, status: "local" },
+              ];
+              const { data: seeded } = await sb.from("wa_templates").insert(defaults).select();
+              return json(res, { templates: seeded ?? [] });
+            }
+            return json(res, { templates: data });
+          }
+
+          // GET /api/webhook/whatsapp (verification)
+          if (url === "/api/webhook/whatsapp" && req.method === "GET") {
+            const params = new URLSearchParams((req.url || "").split("?")[1] || "");
+            const mode = params.get("hub.mode");
+            const token = params.get("hub.verify_token");
+            const challenge = params.get("hub.challenge");
+            if (mode === "subscribe" && token && verifyWebhookToken(token)) {
+              res.writeHead(200, { "Content-Type": "text/plain" });
+              res.end(challenge || "");
+            } else {
+              res.writeHead(403);
+              res.end();
+            }
+            return;
           }
 
           return json(res, { error: "Not found" }, 404);

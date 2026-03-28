@@ -78,6 +78,11 @@ export default function Home() {
   const growthQuery = useQuery({ queryKey: ['growth'], queryFn: fetchGrowth });
   const briefingQuery = useQuery({ queryKey: ['briefing'], queryFn: fetchBriefing });
   const verificationQuery = useQuery({ queryKey: ['verification-queue'], queryFn: fetchVerificationQueue, staleTime: 60000, refetchInterval: 120000 });
+  const waLeadsCountQuery = useQuery({
+    queryKey: ['wa-leads-count'],
+    queryFn: () => fetch('/api/whatsapp/leads?status=new').then(r => r.ok ? r.json() : { total: 0 }).then(d => d.total ?? 0),
+    refetchInterval: 60_000,
+  });
 
   const vendors = vendorsQuery.data ?? [];
   const orders = ordersQuery.data ?? [];
@@ -271,7 +276,7 @@ export default function Home() {
 
       {/* Desktop Sidebar */}
       {!isMobile && (
-        <Sidebar activeSection={activeSection} onNavigate={handleNavigate} liveStatus={liveStatus} verificationCount={verificationCount} />
+        <Sidebar activeSection={activeSection} onNavigate={handleNavigate} liveStatus={liveStatus} verificationCount={verificationCount} newLeadsCount={waLeadsCountQuery.data ?? 0} />
       )}
 
       {/* Mobile Drawer Overlay */}
@@ -290,7 +295,7 @@ export default function Home() {
             transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
             transition: 'transform 0.3s cubic-bezier(0.34,1.56,0.64,1)',
           }}>
-            <Sidebar activeSection={activeSection} onNavigate={handleNavigate} liveStatus={liveStatus} verificationCount={verificationCount} />
+            <Sidebar activeSection={activeSection} onNavigate={handleNavigate} liveStatus={liveStatus} verificationCount={verificationCount} newLeadsCount={waLeadsCountQuery.data ?? 0} />
           </div>
         </>
       )}

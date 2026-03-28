@@ -739,3 +739,167 @@ export async function sendVendorNotification(vendorId: number, title: string, me
     return res.ok;
   } catch { return false; }
 }
+
+// ─── WhatsApp Acquisition Types ──────────────────────────────
+
+export type WaGroupStatus = 'discovered' | 'approved' | 'joining' | 'joined' | 'rejected' | 'left' | 'failed';
+export type WaLeadType = 'unknown' | 'vendor' | 'customer';
+export type WaLeadStatus = 'new' | 'contacted' | 'qualified' | 'converted' | 'dead';
+export type WaMessageDirection = 'inbound' | 'outbound';
+export type WaBroadcastStatus = 'draft' | 'pending_approval' | 'approved' | 'sending' | 'sent' | 'failed';
+
+export interface WaGroup {
+  id: number;
+  name: string | null;
+  inviteLink: string;
+  source: string | null;
+  sourceUrl: string | null;
+  keywords: string[] | null;
+  status: WaGroupStatus;
+  memberCount: number;
+  waGroupId: string | null;
+  joinedAt: string | null;
+  lastBroadcastAt: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WaLead {
+  id: number;
+  phone: string;
+  name: string | null;
+  profilePicUrl: string | null;
+  type: WaLeadType;
+  status: WaLeadStatus;
+  sourceGroupId: number | null;
+  qualificationNotes: string | null;
+  convertedVendorId: number | null;
+  lastContactedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  latestMessage?: WaMessage | null;
+}
+
+export interface WaMessage {
+  id: number;
+  leadId: number | null;
+  groupId: number | null;
+  waMessageId: string | null;
+  direction: WaMessageDirection;
+  content: string;
+  mediaUrl: string | null;
+  status: string;
+  sentAt: string;
+  deliveredAt: string | null;
+  readAt: string | null;
+}
+
+export interface WaTemplate {
+  id: number;
+  name: string;
+  category: string;
+  body: string;
+  variables: string[] | null;
+  metaTemplateId: string | null;
+  status: string;
+  isDefault: boolean;
+  createdAt: string;
+}
+
+export interface WaBroadcast {
+  id: number;
+  name: string;
+  templateName: string | null;
+  messageBody: string;
+  targetGroupIds: number[] | null;
+  status: WaBroadcastStatus;
+  sentCount: number;
+  deliveredCount: number;
+  readCount: number;
+  scheduledAt: string | null;
+  sentAt: string | null;
+  createdAt: string;
+}
+
+export interface WaScrapeResult {
+  jobId: number;
+  linksFound: number;
+  linksNew: number;
+  groups: WaGroup[];
+}
+
+// ─── WhatsApp API Functions ──────────────────────────────────
+
+export async function fetchWaGroups(): Promise<WaGroup[]> {
+  const res = await fetch('/api/whatsapp/groups');
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.groups ?? data ?? [];
+}
+
+export async function fetchWaLeads(): Promise<WaLead[]> {
+  const res = await fetch('/api/whatsapp/leads');
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.leads ?? data ?? [];
+}
+
+export async function fetchWaTemplates(): Promise<WaTemplate[]> {
+  const res = await fetch('/api/whatsapp/templates');
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.templates ?? data ?? [];
+}
+
+export async function fetchWaMessages(leadId: number): Promise<WaMessage[]> {
+  const res = await fetch(`/api/whatsapp/leads/${leadId}/messages`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.messages ?? data ?? [];
+}
+
+export async function scrapeWaGroups(keywords: string[], platforms: string[]): Promise<WaScrapeResult> {
+  const res = await fetch('/api/whatsapp/scrape', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keywords, platforms }),
+  });
+  if (!res.ok) throw new Error('Scrape failed');
+  return res.json();
+}
+
+export async function updateWaGroupStatus(id: number, status: WaGroupStatus, notes?: string): Promise<WaGroup> {
+  const res = await fetch(`/api/whatsapp/groups/${id}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status, ...(notes ? { notes } : {}) }),
+  });
+  if (!res.ok) throw new Error('Update failed');
+  return res.json();
+}
+
+export async function sendWaBroadcast(payload: {
+  name: string;
+  messageBody: string;
+  targetGroupIds: number[];
+  templateId?: number;
+}): Promise<WaBroadcast> {
+  const res = await fetch('/api/whatsapp/broadcast', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error('Broadcast failed');
+  return res.json();
+}
+
+export async function updateWaLeadType(id: number, type: WaLeadType, status?: WaLeadStatus): Promise<WaLead> {
+  const res = await fetch(`/api/whatsapp/leads/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type, ...(status ? { status } : {}) }),
+  });
+  if (!res.ok) throw new Error('Update failed');
+  return res.json();
+}

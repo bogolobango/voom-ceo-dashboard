@@ -2,6 +2,8 @@ import { Router } from "express";
 import NodeCache from "node-cache";
 import { supabase } from "./supabase.js";
 import { safeLogError } from "./index.js";
+import { discoverWhatsAppGroups } from "./whatsapp-scraper.js";
+import { broadcastToGroups, verifyWebhookToken, processLeadMessage, parseWebhookPayload, sendTextMessage } from "./whatsapp-api.js";
 
 const router = Router();
 
@@ -1554,6 +1556,465 @@ router.post("/api/vendors/invite", async (req, res) => {
   } catch (error) {
     safeLogError("Vendor invite error", error);
     res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+// ─── WhatsApp Acquisition Routes ─────────────────────────────────────────────
+
+const DEFAULT_WA_TEMPLATES = [
+  {
+    name: "Group Intro — Car Parts",
+    category: "marketing",
+    body: "👋 Hello everyone! We're VOOM Parts — Ghana's new online marketplace for genuine auto spare parts.\n\nFind parts for Toyota, Hyundai, Nissan, Mercedes, and more from verified vendors across Ghana.\n\n🔧 Vendors: List your parts FREE at voomparts.com\n🛒 Buyers: Search 10,000+ parts at voomparts.com\n\nDelivery available across all 16 regions. 🇬🇭",
+    variables: [] as string[],
+    isDefault: true,
+  },
+  {
+    name: "Vendor Recruitment",
+    category: "marketing",
+    body: "🚗 Attention spare parts dealers & mechanics in Ghana!\n\nAre you selling auto parts? List your inventory on voomparts.com and reach buyers from Accra, Kumasi, Takoradi, and beyond — for FREE.\n\n✅ Free listing (up to 10 parts)\n✅ WhatsApp buyer inquiries directly to you\n✅ No commission on your first 3 sales\n\nRegister now: voomparts.com/vendor",
+    variables: [] as string[],
+    isDefault: false,
+  },
+  {
+    name: "Part Request Promo",
+    category: "marketing",
+    body: "🔍 Can't find the car part you need?\n\nPost a *Part Request* on voomparts.com — describe the part, your car model, and your budget. Verified vendors across Ghana will contact you directly with prices!\n\nNo more calling around. Let the parts come to you. 🇬🇭\n👉 voomparts.com",
+    variables: [] as string[],
+    isDefault: false,
+  },
+];
+
+// POST /api/whatsapp/scrape
+router.post("/api/whatsapp/scrape", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const { keywords = [], platforms = [] } = req.body;
+    if (!Array.isArray(keywords) || keywords.length === 0) {
+      return res.status(400).json({ error: "keywords must be a non-empty array" });
+    }
+
+    const discovered = await discoverWhatsAppGroups({
+      keywords,
+      platforms: platforms.length > 0 ? platforms : ["google", "facebook"],
+      serpApiKey: process.env.SERP_API_KEY,
+      apifyApiKey: process.env.APIFY_API_KEY,
+      useMockIfNoKeys: true,
+    });
+
+    // Upsert into wa_groups
+    let linksNew = 0;
+    const newGroups: any[] = [];
+    for (const g of discovered) {
+      const { data: existing } = await supabase!
+        .from("wa_groups")
+        .select("id")
+        .eq("inviteLink", g.inviteLink)
+        .maybeSingle();
+
+      if (!existing) {
+        const { data: inserted } = await supabase!
+          .from("wa_groups")
+          .insert({
+            name: g.name || null,
+            inviteLink: g.inviteLink,
+            source: g.source,
+            sourceUrl: g.sourceUrl,
+            keywords: g.keywords,
+            status: "discovered",
+          })
+          .select()
+          .single();
+        if (inserted) {
+          newGroups.push(inserted);
+          linksNew++;
+        }
+      }
+    }
+
+    // Log scrape job
+    await supabase!.from("wa_scrape_jobs").insert({
+      keywords,
+      platforms,
+      status: "completed",
+      linksFound: discovered.length,
+      linksNew,
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+    });
+
+    res.json({ jobId: Date.now(), linksFound: discovered.length, linksNew, groups: newGroups });
+  } catch (error) {
+    safeLogError("WhatsApp scrape error", error);
+    res.status(500).json({ error: "Scrape failed" });
+  }
+});
+
+// GET /api/whatsapp/groups
+router.get("/api/whatsapp/groups", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    let query = supabase!.from("wa_groups").select("*").order("createdAt", { ascending: false });
+    const status = req.query.status as string | undefined;
+    if (status) {
+      query = query.eq("status", status);
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    res.json({ groups: data ?? [], total: data?.length ?? 0 });
+  } catch (error) {
+    safeLogError("WhatsApp groups fetch error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+// PATCH /api/whatsapp/groups/:id/status
+router.patch("/api/whatsapp/groups/:id/status", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const groupId = parseInt(req.params.id, 10);
+    if (isNaN(groupId)) return res.status(400).json({ error: "Invalid group ID" });
+
+    const { status, notes } = req.body;
+    const validStatuses = ["discovered", "approved", "joining", "joined", "rejected", "left", "failed"];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: "Invalid status" });
+    }
+
+    const updateFields: Record<string, any> = {
+      status,
+      updatedAt: new Date().toISOString(),
+    };
+    if (notes !== undefined) updateFields.notes = notes;
+    if (status === "joined") updateFields.joinedAt = new Date().toISOString();
+    if (status === "approved") {
+      console.log(`[WA] Group ${groupId} approved — join would be attempted via API`);
+    }
+
+    const { data, error } = await supabase!
+      .from("wa_groups")
+      .update(updateFields)
+      .eq("id", groupId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: "Group not found" });
+    res.json(data);
+  } catch (error) {
+    safeLogError("WhatsApp group status update error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+// POST /api/whatsapp/broadcast
+router.post("/api/whatsapp/broadcast", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const { name, messageBody, targetGroupIds, templateId } = req.body;
+    if (!name || !messageBody || !Array.isArray(targetGroupIds) || targetGroupIds.length === 0) {
+      return res.status(400).json({ error: "name, messageBody, and targetGroupIds are required" });
+    }
+
+    // Create broadcast record
+    const { data: broadcast, error: insertErr } = await supabase!
+      .from("wa_broadcasts")
+      .insert({
+        name,
+        messageBody,
+        targetGroupIds,
+        templateName: templateId ? String(templateId) : null,
+        status: "sending",
+      })
+      .select()
+      .single();
+
+    if (insertErr) throw insertErr;
+
+    // Fetch waGroupIds for target groups
+    const { data: groups } = await supabase!
+      .from("wa_groups")
+      .select("id, waGroupId")
+      .in("id", targetGroupIds);
+
+    const waGroupIds = (groups || [])
+      .map((g: any) => g.waGroupId)
+      .filter(Boolean);
+
+    // Send broadcast
+    const results = await broadcastToGroups(
+      waGroupIds.length > 0 ? waGroupIds : targetGroupIds.map(String),
+      messageBody
+    );
+    const sentCount = results.filter(r => r.success).length;
+
+    // Update broadcast record and groups
+    await supabase!
+      .from("wa_broadcasts")
+      .update({
+        status: "sent",
+        sentCount,
+        sentAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+      .eq("id", broadcast.id);
+
+    // Update lastBroadcastAt on groups
+    await supabase!
+      .from("wa_groups")
+      .update({ lastBroadcastAt: new Date().toISOString() })
+      .in("id", targetGroupIds);
+
+    res.json({ ...broadcast, status: "sent", sentCount, sentAt: new Date().toISOString() });
+  } catch (error) {
+    safeLogError("WhatsApp broadcast error", error);
+    res.status(500).json({ error: "Broadcast failed" });
+  }
+});
+
+// GET /api/whatsapp/leads
+router.get("/api/whatsapp/leads", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    let query = supabase!.from("wa_leads").select("*").order("createdAt", { ascending: false });
+    const type = req.query.type as string | undefined;
+    const status = req.query.status as string | undefined;
+    if (type) query = query.eq("type", type);
+    if (status) query = query.eq("status", status);
+
+    const { data: leads, error } = await query;
+    if (error) throw error;
+
+    // Attach latest message per lead
+    const leadsWithMessages = await Promise.all(
+      (leads || []).map(async (lead: any) => {
+        const { data: msgs } = await supabase!
+          .from("wa_messages")
+          .select("*")
+          .eq("leadId", lead.id)
+          .order("sentAt", { ascending: false })
+          .limit(1);
+        return { ...lead, latestMessage: msgs?.[0] ?? null };
+      })
+    );
+
+    res.json({ leads: leadsWithMessages, total: leadsWithMessages.length });
+  } catch (error) {
+    safeLogError("WhatsApp leads fetch error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+// GET /api/whatsapp/leads/:id/messages
+router.get("/api/whatsapp/leads/:id/messages", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const leadId = parseInt(req.params.id, 10);
+    if (isNaN(leadId)) return res.status(400).json({ error: "Invalid lead ID" });
+
+    const { data, error } = await supabase!
+      .from("wa_messages")
+      .select("*")
+      .eq("leadId", leadId)
+      .order("sentAt", { ascending: true });
+
+    if (error) throw error;
+    res.json({ messages: data ?? [] });
+  } catch (error) {
+    safeLogError("WhatsApp messages fetch error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+// PATCH /api/whatsapp/leads/:id
+router.patch("/api/whatsapp/leads/:id", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const leadId = parseInt(req.params.id, 10);
+    if (isNaN(leadId)) return res.status(400).json({ error: "Invalid lead ID" });
+
+    const { type, status, qualificationNotes } = req.body;
+    const updateFields: Record<string, any> = { updatedAt: new Date().toISOString() };
+    if (type) updateFields.type = type;
+    if (status) updateFields.status = status;
+    if (qualificationNotes !== undefined) updateFields.qualificationNotes = qualificationNotes;
+
+    const { data: lead, error } = await supabase!
+      .from("wa_leads")
+      .update(updateFields)
+      .eq("id", leadId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+    // If converting to vendor, create a vendor record
+    if (type === "vendor" && status === "converted" && !lead.convertedVendorId) {
+      const { data: newVendor } = await supabase!
+        .from("vendors")
+        .insert({
+          userId: 0, // placeholder — no user account yet
+          businessName: lead.name || `Lead ${lead.phone}`,
+          phone: lead.phone,
+          whatsapp: lead.phone,
+          status: "pending",
+        })
+        .select()
+        .single();
+
+      if (newVendor) {
+        await supabase!
+          .from("wa_leads")
+          .update({ convertedVendorId: newVendor.id })
+          .eq("id", leadId);
+        lead.convertedVendorId = newVendor.id;
+      }
+    }
+
+    res.json(lead);
+  } catch (error) {
+    safeLogError("WhatsApp lead update error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+// GET /api/whatsapp/templates
+router.get("/api/whatsapp/templates", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const { data, error } = await supabase!
+      .from("wa_templates")
+      .select("*")
+      .order("createdAt", { ascending: true });
+
+    if (error) throw error;
+
+    // Seed defaults if empty
+    if (!data || data.length === 0) {
+      const { data: seeded } = await supabase!
+        .from("wa_templates")
+        .insert(DEFAULT_WA_TEMPLATES.map(t => ({
+          name: t.name,
+          category: t.category,
+          body: t.body,
+          variables: t.variables,
+          isDefault: t.isDefault,
+          status: "local",
+        })))
+        .select();
+      return res.json({ templates: seeded ?? [] });
+    }
+
+    res.json({ templates: data });
+  } catch (error) {
+    safeLogError("WhatsApp templates fetch error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+// GET /api/webhook/whatsapp (verification)
+router.get("/api/webhook/whatsapp", (req, res) => {
+  const mode = req.query["hub.mode"] as string;
+  const token = req.query["hub.verify_token"] as string;
+  const challenge = req.query["hub.challenge"] as string;
+
+  if (mode === "subscribe" && verifyWebhookToken(token)) {
+    res.status(200).send(challenge);
+  } else {
+    res.sendStatus(403);
+  }
+});
+
+// POST /api/webhook/whatsapp (incoming messages)
+router.post("/api/webhook/whatsapp", async (req, res) => {
+  // Respond immediately — Meta retries if no fast response
+  res.sendStatus(200);
+
+  if (!supabase) return;
+
+  try {
+    const messages = parseWebhookPayload(req.body);
+
+    for (const msg of messages) {
+      if (!msg.text) continue;
+
+      // Find or create lead
+      let { data: lead } = await supabase
+        .from("wa_leads")
+        .select("*")
+        .eq("phone", msg.from)
+        .maybeSingle();
+
+      if (!lead) {
+        const { data: newLead } = await supabase
+          .from("wa_leads")
+          .insert({
+            phone: msg.from,
+            name: msg.senderName || null,
+            status: "new",
+            sourceGroupId: null,
+          })
+          .select()
+          .single();
+        lead = newLead;
+      }
+
+      if (!lead) continue;
+
+      // Save inbound message
+      await supabase
+        .from("wa_messages")
+        .insert({
+          leadId: lead.id,
+          groupId: msg.groupId ? parseInt(msg.groupId, 10) || null : null,
+          waMessageId: msg.messageId,
+          direction: "inbound",
+          content: msg.text,
+          sentAt: new Date(parseInt(msg.timestamp, 10) * 1000).toISOString(),
+        });
+
+      // Process through qualification bot
+      const result = processLeadMessage(msg.from, msg.text);
+
+      // Send reply
+      const sendResult = await sendTextMessage(msg.from, result.reply);
+
+      // Save outbound message
+      await supabase
+        .from("wa_messages")
+        .insert({
+          leadId: lead.id,
+          waMessageId: sendResult.messageId || null,
+          direction: "outbound",
+          content: result.reply,
+        });
+
+      // Update lead if qualification complete
+      if (result.isComplete && result.leadData) {
+        await supabase
+          .from("wa_leads")
+          .update({
+            type: result.leadData.type,
+            name: result.leadData.name || lead.name,
+            status: "qualified",
+            lastContactedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          })
+          .eq("id", lead.id);
+      } else {
+        await supabase
+          .from("wa_leads")
+          .update({
+            status: "contacted",
+            lastContactedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          })
+          .eq("id", lead.id);
+      }
+    }
+  } catch (error) {
+    safeLogError("WhatsApp webhook processing error", error);
   }
 });
 
