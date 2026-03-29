@@ -54,13 +54,14 @@ const OUTREACH_TEMPLATES = [
 
 /* ── Helpers ── */
 function derivePipeline(vendors: Vendor[]) {
-  const notContacted = vendors.filter(v => v.status === 'pending' && v.totalListings === 0).length;
-  const contacted = vendors.filter(v => v.status === 'pending' && v.totalListings > 0).length;
-  const responded = vendors.filter(v => v.status === 'rejected' || v.status === 'suspended').length;
+  const isClaimed = (v: Vendor) => v.userId !== null && v.userId !== 0;
+  const notContacted = vendors.filter(v => !isClaimed(v)).length;
+  const contacted    = vendors.filter(v => !isClaimed(v) && v.status === 'pending' && v.totalListings > 0).length;
+  const responded    = vendors.filter(v => v.status === 'rejected' || v.status === 'suspended').length;
+  const claimed      = vendors.filter(v => isClaimed(v) && v.status === 'pending').length;
   const approvedVendors = vendors.filter(v => v.status === 'approved');
-  const claimed = approvedVendors.filter(v => v.totalListings === 0).length;
   const active = approvedVendors.filter(v => v.totalListings > 0 && v.tier === 'free').length;
-  const paid = approvedVendors.filter(v => v.tier !== 'free').length;
+  const paid   = approvedVendors.filter(v => v.tier !== 'free').length;
 
   return { not_contacted: notContacted, contacted, responded, claimed, active, paid };
 }
