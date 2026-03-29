@@ -128,9 +128,12 @@ export function Vendors({ vendors, onRefresh }: VendorsProps) {
   }), [vendors]);
 
   const filtered = useMemo(() => vendors.filter(v => {
+    const q = search.toLowerCase().replace(/[\s\-\(\)+]/g, '');
     const matchSearch = !search ||
       v.businessName.toLowerCase().includes(search.toLowerCase()) ||
-      (v.city || '').toLowerCase().includes(search.toLowerCase());
+      (v.city || '').toLowerCase().includes(search.toLowerCase()) ||
+      (v.phone || '').replace(/[\s\-\(\)+]/g, '').includes(q) ||
+      (v.whatsapp || '').replace(/[\s\-\(\)+]/g, '').includes(q);
     if (!matchSearch) return false;
     switch (filter) {
       case 'claim_requests': return isClaimRequest(v);
@@ -258,7 +261,7 @@ export function Vendors({ vendors, onRefresh }: VendorsProps) {
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Search vendors by name or city..."
+          placeholder="Search by name, city or phone number..."
           style={{
             width: '100%', padding: '0.75rem 1rem 0.75rem 2.5rem',
             borderRadius: '0.875rem', border: '1px solid rgba(79,70,229,0.12)',
