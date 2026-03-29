@@ -92,6 +92,11 @@ export const vendors = pgTable("vendors", {
   isFeatured: boolean("isFeatured").default(false),
   featuredUntil: timestamp("featuredUntil"),
   featuredCategoryId: integer("featuredCategoryId"),
+  claimToken: varchar("claimToken", { length: 64 }).unique(),
+  claimTokenExpiresAt: timestamp("claimTokenExpiresAt"),
+  claimStatus: text("claimStatus").default("unclaimed"),
+  ghanaCardFrontUrl: text("ghanaCardFrontUrl"),
+  ghanaCardBackUrl: text("ghanaCardBackUrl"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });

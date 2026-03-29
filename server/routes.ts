@@ -1,5 +1,6 @@
 import { Router } from "express";
 import NodeCache from "node-cache";
+import { randomBytes } from "crypto";
 import { supabase } from "./supabase.js";
 import { safeLogError } from "./index.js";
 import { discoverWhatsAppGroups } from "./whatsapp-scraper.js";
@@ -104,7 +105,7 @@ router.get("/api/vendors", async (req, res) => {
   try {
     const { data: allVendors, error } = await supabase!
       .from("vendors")
-      .select("id, userId, businessName, phone, whatsapp, city, region, status, verified, rating, totalSales, tier, isFeatured, createdAt")
+      .select("id, userId, businessName, phone, whatsapp, city, region, status, verified, rating, totalSales, tier, isFeatured, claimToken, claimTokenExpiresAt, claimStatus, createdAt")
       .order("createdAt", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -156,6 +157,9 @@ router.get("/api/vendors", async (req, res) => {
         totalListings: productMap.get(v.id) || 0,
         tier: v.tier,
         isFeatured: v.isFeatured,
+        claimToken: v.claimToken ?? null,
+        claimTokenExpiresAt: v.claimTokenExpiresAt ?? null,
+        claimStatus: v.claimStatus ?? 'unclaimed',
         createdAt: v.createdAt,
       };
     });
@@ -1428,6 +1432,53 @@ router.post("/api/vendors/:id/notifications", async (req, res) => {
   }
 });
 
+// ─── Internal: get or create a claim token for a vendor ─────────────────────
+async function getOrCreateClaimToken(vendorId: number): Promise<{ token: string; claimUrl: string } | null> {
+  const { data: vendor, error } = await supabase!
+    .from("vendors")
+    .select("id, claimToken, claimTokenExpiresAt, claimStatus")
+    .eq("id", vendorId)
+    .single();
+  if (error || !vendor) return null;
+
+  const now = new Date();
+  const hasValidToken =
+    vendor.claimToken &&
+    vendor.claimStatus === "unclaimed" &&
+    vendor.claimTokenExpiresAt &&
+    new Date(vendor.claimTokenExpiresAt) > now;
+
+  if (hasValidToken) {
+    return { token: vendor.claimToken, claimUrl: `https://voomparts.com/claim/${vendor.claimToken}` };
+  }
+
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { error: updateErr } = await supabase!
+    .from("vendors")
+    .update({ claimToken: token, claimTokenExpiresAt: expiresAt, claimStatus: "unclaimed", updatedAt: now.toISOString() })
+    .eq("id", vendorId);
+  if (updateErr) return null;
+
+  return { token, claimUrl: `https://voomparts.com/claim/${token}` };
+}
+
+// ─── POST /api/vendors/:id/generate-claim-link ───────────────────────────────
+router.post("/api/vendors/:id/generate-claim-link", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const vendorId = parseInt(req.params.id, 10);
+    if (isNaN(vendorId)) return res.status(400).json({ error: "Invalid vendor ID" });
+    const result = await getOrCreateClaimToken(vendorId);
+    if (!result) return res.status(404).json({ error: "Vendor not found or token generation failed" });
+    res.json(result);
+  } catch (error) {
+    safeLogError("Generate claim link error", error);
+    res.status(500).json({ error: "Failed to generate claim link" });
+  }
+});
+
 // ─── GET /api/vendors/outreach-invites ──────────────────────────────────────
 router.get("/api/vendors/outreach-invites", async (req, res) => {
   if (dbUnavailable(res)) return;
@@ -1467,6 +1518,10 @@ router.post("/api/vendors/:id/outreach-invite", async (req, res) => {
       .single();
     if (vErr || !vendor) return res.status(404).json({ error: "Vendor not found" });
 
+    // Get or generate a secure claim link
+    const claimResult = await getOrCreateClaimToken(vendorId);
+    const claimUrl = claimResult?.claimUrl ?? `https://voomparts.com/vendors/${vendorId}`;
+
     // Build WhatsApp number
     const digitsOnly = vendor.phone.replace(/\D/g, "");
     let waNumber = digitsOnly;
@@ -1476,26 +1531,22 @@ router.post("/api/vendors/:id/outreach-invite", async (req, res) => {
 
     const vendorPageUrl = `https://voomparts.com/vendors/${vendorId}`;
     const message =
-      `Hi! 👋 Your shop, *${vendor.businessName}*, is already live on VOOM Ghana — Ghana's online auto-parts marketplace.\n\n` +
-      `🔗 See your listing: ${vendorPageUrl}\n\n` +
-      `Buyers across all 16 regions of Ghana can already find you! Claim your free account to:\n` +
-      `✅ Manage your listings\n` +
-      `✅ Add more products\n` +
-      `✅ Get your verified badge\n` +
-      `✅ Receive direct buyer enquiries\n\n` +
-      `Reply *YES* and I'll send you the quick 5-min setup link — completely free!\n\n` +
+      `Hi! 👋 Your shop, *${vendor.businessName}*, is already live on VOOM Ghana — Ghana's #1 online auto-parts marketplace.\n\n` +
+      `Buyers across all 16 regions can already find you. Click the link below to claim your page in 2 minutes and start managing your listings:\n\n` +
+      `👉 ${claimUrl}\n\n` +
+      `The link expires in 7 days. It's completely free.\n\n` +
       `— VOOM Ghana Team 🚗`;
 
     const whatsappUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`;
 
-    // Record invite event (uses whatsapp_tap type with source=outreach_invite in metadata)
+    // Record invite event
     await supabase!.from("analytics_events").insert({
       eventType: "whatsapp_tap",
       vendorId,
-      metadata: { source: "outreach_invite", vendorPageUrl, waNumber },
+      metadata: { source: "outreach_invite", vendorPageUrl, claimUrl, waNumber },
     });
 
-    res.json({ whatsappUrl, vendorPageUrl });
+    res.json({ whatsappUrl, vendorPageUrl, claimUrl });
   } catch (error) {
     safeLogError("Outreach invite error", error);
     res.status(500).json({ error: "Failed to process invite" });

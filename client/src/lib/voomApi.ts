@@ -53,6 +53,9 @@ export interface Vendor {
   tier: string;
   isFeatured: boolean;
   createdAt: string;
+  claimToken?: string | null;
+  claimTokenExpiresAt?: string | null;
+  claimStatus?: 'unclaimed' | 'claimed' | 'expired';
 }
 
 export interface OutreachInvite {
@@ -197,9 +200,15 @@ export async function fetchOutreachInvites(): Promise<OutreachInvite[]> {
   return result ?? [];
 }
 
-export async function sendOutreachInvite(vendorId: number): Promise<{ whatsappUrl: string; vendorPageUrl: string }> {
+export async function sendOutreachInvite(vendorId: number): Promise<{ whatsappUrl: string; vendorPageUrl: string; claimUrl?: string }> {
   const res = await fetch(`/api/vendors/${vendorId}/outreach-invite`, { method: 'POST' });
   if (!res.ok) throw new Error('Failed to send invite');
+  return res.json();
+}
+
+export async function generateClaimLink(vendorId: number): Promise<{ claimUrl: string; token: string }> {
+  const res = await fetch(`/api/vendors/${vendorId}/generate-claim-link`, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to generate claim link');
   return res.json();
 }
 

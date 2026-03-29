@@ -457,7 +457,7 @@ export default function viteApiPlugin(): Plugin {
 
             const { data: allVendors, error } = await sb
               .from("vendors")
-              .select("id, userId, businessName, phone, whatsapp, city, region, status, verified, rating, totalSales, tier, isFeatured, createdAt")
+              .select("id, userId, businessName, phone, whatsapp, city, region, status, verified, rating, totalSales, tier, isFeatured, claimToken, claimTokenExpiresAt, claimStatus, createdAt")
               .order("createdAt", { ascending: false });
 
             if (error) throw error;
@@ -493,6 +493,9 @@ export default function viteApiPlugin(): Plugin {
               totalListings: productMap.get(v.id) || 0,
               tier: v.tier,
               isFeatured: v.isFeatured,
+              claimToken: v.claimToken ?? null,
+              claimTokenExpiresAt: v.claimTokenExpiresAt ?? null,
+              claimStatus: v.claimStatus ?? 'unclaimed',
               createdAt: v.createdAt,
             }));
 

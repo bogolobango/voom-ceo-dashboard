@@ -1,0 +1,140 @@
+This is the VOOM CEO Dashboard (Arctic Glass design system — do not 
+introduce new colours, fonts, or shadows). It connects to the same 
+Supabase PostgreSQL database as the main marketplace at voomparts.com.
+
+The Vendors tab already has filter tabs, claim request badges, and a 
+WhatsApp Invite button — but the outreach flow is incomplete. 
+The WhatsApp message currently tells vendors to "reply YES" instead of 
+sending them an actual secure claim link. Fix this end-to-end.
+
+---
+
+## TASK 1 — Add claim columns to shared/schema.ts
+
+The following columns already exist in the live database (added by the 
+marketplace). Update the vendors table in shared/schema.ts to include 
+them so Supabase queries can select them:
+
+  claimToken        varchar(64)   unique
+  claimTokenExpiresAt  timestamp  nullable
+  claimStatus       text          default 'unclaimed'  -- values: 'unclaimed' | 'claimed' | 'expired'
+  ghanaCardFrontUrl text          nullable
+  ghanaCardBackUrl  text          nullable
+
+Also update the Vendor interface in client/src/lib/voomApi.ts to include 
+these fields:
+  claimToken?: string | null
+  claimTokenExpiresAt?: string | null
+  claimStatus?: 'unclaimed' | 'claimed' | 'expired'
+
+---
+
+## TASK 2 — Add claim token generation endpoint to server/routes.ts
+
+Add a new route:
+  POST /api/vendors/:id/generate-claim-link
+
+Logic:
+1. Look up the vendor by id (select id, businessName, claimToken, 
+   claimTokenExpiresAt, claimStatus)
+2. If a valid non-expired token already exists (claimTokenExpiresAt > now 
+   AND claimStatus === 'unclaimed'), return the existing one — do not 
+   regenerate.
+3. Otherwise generate a new 64-character random token (use nanoid or 
+   crypto.randomBytes(32).toString('hex')).
+4. Set claimTokenExpiresAt = now + 7 days, claimStatus = 'unclaimed'.
+5. Update the vendors row in Supabase.
+6. Return:
+   { claimUrl: `https://voomparts.com/claim/${token}`, token }
+
+---
+
+## TASK 3 — Upgrade the outreach invite to embed the real claim link
+
+In the existing POST /api/vendors/:id/outreach-invite route 
+(already in routes.ts), before building the WhatsApp message:
+
+1. Call the generate-claim-link logic (reuse the same function/query —
+   do not duplicate the token generation, just call it internally).
+2. Replace the current message with this one:
+
+Hi! 👋 Your shop, *{businessName}*, is already live on VOOM Ghana —
+Ghana's #1 online auto-parts marketplace.
+
+Buyers across all 16 regions can already find you. Click the link 
+below to claim your page in 2 minutes and start managing your listings:
+
+👉 {claimUrl}
+
+The link expires in 7 days. It's completely free.
+
+— VOOM Ghana Team 🚗
+
+3. Return { whatsappUrl, claimUrl, vendorPageUrl } (add claimUrl to the 
+   response shape).
+
+---
+
+## TASK 4 — Update vendor SELECT queries
+
+In routes.ts, any query that fetches vendors for the Vendors tab (the 
+main GET /api/vendors list) must include these fields:
+  claimToken, claimTokenExpiresAt, claimStatus
+
+---
+
+## TASK 5 — Update Vendors.tsx UI
+
+Add a generateClaimLinkMutation using useMutation that calls:
+  POST /api/vendors/:id/generate-claim-link
+
+Then update the per-row action buttons for unclaimed vendors:
+
+CASE A — vendor has a valid non-expired claimToken (claimStatus === 
+'unclaimed' AND claimTokenExpiresAt is in the future):
+  Show TWO buttons side by side:
+  1. "Copy Link" (clipboard icon) — copies 
+     `https://voomparts.com/claim/${vendor.claimToken}` to clipboard 
+     with a toast "Claim link copied!"
+  2. "WhatsApp" (WhatsApp icon, green) — calls the existing 
+     sendOutreachInvite(vendor.id) which now embeds the real link
+
+  Below the buttons show in small muted text:
+  "Expires {formatted date}" — format as e.g. "Apr 5"
+
+CASE B — vendor has no token OR claimStatus === 'expired':
+  Show ONE button:
+  "Send Claim Link" (link icon) — calls generateClaimLinkMutation, then 
+  on success immediately opens the WhatsApp URL by calling 
+  sendOutreachInvite(vendor.id)
+
+CASE C — vendor.claimStatus === 'claimed':
+  Show a green "Claimed ✓" badge (no buttons). Use the same emerald 
+  colour already used for Active status: rgba(5,150,105,0.1) / #059669
+
+Keep all existing styles — glass-card class, Arctic Glass tokens 
+(#4F46E5, #059669, #D97706, Plus Jakarta Sans, Space Grotesk, Inter). 
+Do not change the filter tabs or approve/reject logic.
+
+---
+
+## TASK 6 — Add generateClaimLink to client/src/lib/voomApi.ts
+
+export async function generateClaimLink(vendorId: number): 
+  Promise<{ claimUrl: string; token: string }> {
+  const res = await fetch(`/api/vendors/${vendorId}/generate-claim-link`, 
+    { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to generate claim link');
+  return res.json();
+}
+
+---
+
+## Constraints
+- Do NOT change the existing filter tabs, approve/reject flow, 
+  VendorDetailDrawer, InviteVendorModal, or any other section.
+- Do NOT change any ID column types.
+- Do NOT run db:push — the columns already exist in the live database.
+  Just update the TypeScript types to match.
+- Package manager: pnpm
+- After all changes run: pnpm tsc --noEmit to confirm no TypeScript errors.
