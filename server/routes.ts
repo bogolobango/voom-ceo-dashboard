@@ -1084,6 +1084,13 @@ router.patch("/api/vendors/:id/verify", async (req, res) => {
     const { data, error } = await supabase!.from("vendors")
       .update(updateFields).eq("id", vendorId).select().single();
     if (error) return res.status(400).json({ error: error.message });
+
+    // When a claim is approved, promote the linked user to vendor role
+    if (approved === true && data?.userId) {
+      await syncVendorUserRole(data.userId, data.phone);
+      await supabase!.from("vendors").update({ claimStatus: "claimed" }).eq("id", vendorId).eq("claimStatus", "unclaimed");
+    }
+
     res.json({ source: "database", data });
   } catch (error) {
     safeLogError("Vendor verify error", error);
@@ -1261,6 +1268,13 @@ router.patch("/api/vendors/:id/status", async (req, res) => {
       return res.status(404).json({ error: "Vendor not found" });
     }
 
+    // When approving a vendor, ensure their linked user account is promoted
+    if (status === "approved" && data.userId) {
+      await syncVendorUserRole(data.userId, data.phone);
+      // Also mark claimStatus as claimed if userId is set
+      await supabase!.from("vendors").update({ claimStatus: "claimed" }).eq("id", vendorId).eq("claimStatus", "unclaimed");
+    }
+
     cache.del(CACHE_KEYS.stats);
     cache.del(CACHE_KEYS.vendorHealth);
     cache.del(CACHE_KEYS.briefing);
@@ -1431,6 +1445,22 @@ router.post("/api/vendors/:id/notifications", async (req, res) => {
     res.status(500).json({ error: "Database query failed" });
   }
 });
+
+// ─── Internal: promote a user to vendor role when linked to a vendor ─────────
+async function syncVendorUserRole(userId: number, vendorPhone?: string | null) {
+  if (!userId) return;
+  const update: Record<string, unknown> = {
+    role: "vendor",
+    isVerified: true,
+    updatedAt: new Date().toISOString(),
+  };
+  if (vendorPhone) {
+    // Only back-fill phone if the user doesn't already have one
+    const { data: u } = await supabase!.from("users").select("phone").eq("id", userId).single();
+    if (!u?.phone) update.phone = vendorPhone;
+  }
+  await supabase!.from("users").update(update).eq("id", userId);
+}
 
 // ─── Internal: get or create a claim token for a vendor ─────────────────────
 async function getOrCreateClaimToken(vendorId: number): Promise<{ token: string; claimUrl: string } | null> {
