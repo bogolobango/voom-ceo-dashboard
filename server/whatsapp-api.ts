@@ -14,6 +14,8 @@
  *  WA_BUSINESS_ACCOUNT_ID — Your WhatsApp Business Account ID
  */
 
+import { loadWaConfig } from "./wa-config.js";
+
 const WA_API_BASE = "https://graph.facebook.com/v21.0";
 
 export interface WaConfig {
@@ -24,12 +26,7 @@ export interface WaConfig {
 }
 
 function getConfig(): WaConfig {
-  return {
-    phoneNumberId: process.env.WA_PHONE_NUMBER_ID || "",
-    accessToken: process.env.WA_ACCESS_TOKEN || "",
-    webhookToken: process.env.WA_WEBHOOK_TOKEN || "voom_webhook_secret",
-    businessAccountId: process.env.WA_BUSINESS_ACCOUNT_ID || "",
-  };
+  return loadWaConfig();
 }
 
 // ── Send a text message to an individual or group ─────────────────────────────

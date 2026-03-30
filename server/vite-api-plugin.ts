@@ -6,6 +6,7 @@ import type { Plugin, ViteDevServer } from "vite";
 import { createClient } from "@supabase/supabase-js";
 import { discoverWhatsAppGroups } from "./whatsapp-scraper.js";
 import { broadcastToGroups, verifyWebhookToken, processLeadMessage, parseWebhookPayload, sendTextMessage } from "./whatsapp-api.js";
+import { loadWaConfig, saveWaConfig } from "./wa-config.js";
 
 let _supabase: ReturnType<typeof createClient> | null = null;
 
@@ -1144,6 +1145,64 @@ export default function viteApiPlugin(): Plugin {
               res.end();
             }
             return;
+          }
+
+          // ─── GET /api/settings/wa-keys ──────────────────────────────────
+          if (url === "/api/settings/wa-keys" && method === "GET") {
+            const cfg = loadWaConfig();
+            return json(res, {
+              status: {
+                phoneNumberId:     !!cfg.phoneNumberId,
+                accessToken:       !!cfg.accessToken,
+                webhookToken:      !!cfg.webhookToken,
+                businessAccountId: !!cfg.businessAccountId,
+              },
+            });
+          }
+
+          // ─── POST /api/settings/wa-keys ─────────────────────────────────
+          if (url === "/api/settings/wa-keys" && method === "POST") {
+            const body = await parseBody(req);
+            const { phoneNumberId, accessToken, webhookToken, businessAccountId } = body ?? {};
+            const current = loadWaConfig();
+            const updated = {
+              phoneNumberId:     String(phoneNumberId || "").trim()     || current.phoneNumberId,
+              accessToken:       String(accessToken || "").trim()       || current.accessToken,
+              webhookToken:      String(webhookToken || "").trim()      || current.webhookToken,
+              businessAccountId: String(businessAccountId || "").trim() || current.businessAccountId,
+            };
+            saveWaConfig(updated);
+            return json(res, {
+              success: true,
+              status: {
+                phoneNumberId:     !!updated.phoneNumberId,
+                accessToken:       !!updated.accessToken,
+                webhookToken:      !!updated.webhookToken,
+                businessAccountId: !!updated.businessAccountId,
+              },
+            });
+          }
+
+          // ─── POST /api/settings/wa-test ─────────────────────────────────
+          if (url === "/api/settings/wa-test" && method === "POST") {
+            const cfg = loadWaConfig();
+            if (!cfg.phoneNumberId || !cfg.accessToken) {
+              return json(res, { success: false, message: "Phone Number ID and Access Token are required" }, 400);
+            }
+            try {
+              const r = await fetch(
+                `https://graph.facebook.com/v21.0/${cfg.phoneNumberId}?fields=display_phone_number,verified_name`,
+                { headers: { Authorization: `Bearer ${cfg.accessToken}` } }
+              );
+              const data = await r.json() as Record<string, unknown>;
+              if (r.ok && data.display_phone_number) {
+                return json(res, { success: true, message: `Connected — ${data.verified_name ?? ""} (${data.display_phone_number})` });
+              }
+              const errMsg = (data.error as Record<string, unknown>)?.message ?? "Invalid credentials";
+              return json(res, { success: false, message: String(errMsg) }, 400);
+            } catch {
+              return json(res, { success: false, message: "Connection test failed" }, 500);
+            }
           }
 
           return json(res, { error: "Not found" }, 404);

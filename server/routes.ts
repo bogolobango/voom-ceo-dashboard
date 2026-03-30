@@ -5,6 +5,7 @@ import { supabase } from "./supabase.js";
 import { safeLogError } from "./index.js";
 import { discoverWhatsAppGroups } from "./whatsapp-scraper.js";
 import { broadcastToGroups, verifyWebhookToken, processLeadMessage, parseWebhookPayload, sendTextMessage } from "./whatsapp-api.js";
+import { loadWaConfig, saveWaConfig } from "./wa-config.js";
 
 const router = Router();
 
@@ -1443,6 +1444,70 @@ router.post("/api/vendors/:id/notifications", async (req, res) => {
   } catch (error) {
     safeLogError("Vendor notification create error", error);
     res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+// ─── GET /api/settings/wa-keys ───────────────────────────────────────────────
+router.get("/api/settings/wa-keys", async (_req, res) => {
+  const cfg = loadWaConfig();
+  res.json({
+    status: {
+      phoneNumberId:     !!cfg.phoneNumberId,
+      accessToken:       !!cfg.accessToken,
+      webhookToken:      !!cfg.webhookToken,
+      businessAccountId: !!cfg.businessAccountId,
+    },
+  });
+});
+
+// ─── POST /api/settings/wa-keys ──────────────────────────────────────────────
+router.post("/api/settings/wa-keys", async (req, res) => {
+  try {
+    const { phoneNumberId, accessToken, webhookToken, businessAccountId } = req.body ?? {};
+    const current = loadWaConfig();
+    const updated = {
+      phoneNumberId:     phoneNumberId?.trim()     || current.phoneNumberId,
+      accessToken:       accessToken?.trim()       || current.accessToken,
+      webhookToken:      webhookToken?.trim()      || current.webhookToken,
+      businessAccountId: businessAccountId?.trim() || current.businessAccountId,
+    };
+    saveWaConfig(updated);
+    res.json({
+      success: true,
+      status: {
+        phoneNumberId:     !!updated.phoneNumberId,
+        accessToken:       !!updated.accessToken,
+        webhookToken:      !!updated.webhookToken,
+        businessAccountId: !!updated.businessAccountId,
+      },
+    });
+  } catch (error) {
+    safeLogError("Save WA keys error", error);
+    res.status(500).json({ error: "Failed to save keys" });
+  }
+});
+
+// ─── POST /api/settings/wa-test ──────────────────────────────────────────────
+router.post("/api/settings/wa-test", async (_req, res) => {
+  try {
+    const cfg = loadWaConfig();
+    if (!cfg.phoneNumberId || !cfg.accessToken) {
+      return res.status(400).json({ success: false, message: "Phone Number ID and Access Token are required" });
+    }
+    const r = await fetch(
+      `https://graph.facebook.com/v21.0/${cfg.phoneNumberId}?fields=display_phone_number,verified_name`,
+      { headers: { Authorization: `Bearer ${cfg.accessToken}` } }
+    );
+    const data = await r.json() as Record<string, unknown>;
+    if (r.ok && data.display_phone_number) {
+      res.json({ success: true, message: `Connected — ${data.verified_name ?? ""} (${data.display_phone_number})` });
+    } else {
+      const errMsg = (data.error as Record<string, unknown>)?.message ?? "Invalid credentials";
+      res.status(400).json({ success: false, message: String(errMsg) });
+    }
+  } catch (error) {
+    safeLogError("WA test error", error);
+    res.status(500).json({ success: false, message: "Connection test failed" });
   }
 });
 

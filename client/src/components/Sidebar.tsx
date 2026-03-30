@@ -112,6 +112,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'verification', label: 'Doc Review', icon: <IconVerification /> },
   { id: 'expansion', label: 'Expansion', icon: <IconExpansion /> },
   { id: 'reports', label: 'Reports', icon: <IconReports /> },
+  { id: 'settings', label: 'Settings', icon: <IconSettings /> },
 ];
 
 export function Sidebar({ activeSection, onNavigate, liveStatus, verificationCount, newLeadsCount }: SidebarProps) {

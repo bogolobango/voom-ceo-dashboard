@@ -24,6 +24,7 @@ import { Analytics } from '../components/sections/Analytics';
 import { VerificationQueue } from '../components/sections/VerificationQueue';
 import { MarketExpansion } from '../components/sections/MarketExpansion';
 import { Reports } from '../components/sections/Reports';
+import { Settings } from '../components/sections/Settings';
 import {
   fetchStats, fetchVendors, fetchOrders, fetchProducts,
   fetchPartRequests, fetchRevenue, fetchGrowth, fetchBriefing,
@@ -141,11 +142,6 @@ export default function Home() {
   }, [queryClient]);
 
   const handleNavigate = (section: string) => {
-    if (section === 'settings') {
-      toast.info('Settings panel coming soon.');
-      setSidebarOpen(false);
-      return;
-    }
     if (section in SECTION_LABELS) {
       setActiveSection(section as Section);
     }
@@ -168,6 +164,13 @@ export default function Home() {
   }, [handleRefresh]);
 
   const renderSection = () => {
+    // Settings doesn't need KPI data — render immediately
+    if (activeSection === 'settings') return (
+      <WidgetErrorBoundary fallbackTitle="Settings failed to load">
+        <Settings />
+      </WidgetErrorBoundary>
+    );
+
     if (!kpis) {
       if (isAnyLoading) return (
         <div style={{ textAlign: 'center', padding: '4rem 1rem' }}>
@@ -260,6 +263,11 @@ export default function Home() {
       case 'reports': return (
         <WidgetErrorBoundary fallbackTitle="Reports failed to load">
           <Reports />
+        </WidgetErrorBoundary>
+      );
+      case 'settings': return (
+        <WidgetErrorBoundary fallbackTitle="Settings failed to load">
+          <Settings />
         </WidgetErrorBoundary>
       );
       default: return (
