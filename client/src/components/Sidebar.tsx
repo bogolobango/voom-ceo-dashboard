@@ -89,6 +89,12 @@ function IconAnalytics() {
 function IconVerification() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 15 11 17 15 13"/></svg>;
 }
+function IconExpansion() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>;
+}
+function IconReports() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6z"/></svg>;
+}
 
 const NAV_ITEMS: NavItem[] = [
   { id: 'briefing', label: 'Briefing', icon: <IconBriefing /> },
@@ -104,6 +110,8 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'competitive', label: 'Competitive', icon: <IconCompetitive /> },
   { id: 'analytics', label: 'Analytics', icon: <IconAnalytics /> },
   { id: 'verification', label: 'Doc Review', icon: <IconVerification /> },
+  { id: 'expansion', label: 'Expansion', icon: <IconExpansion /> },
+  { id: 'reports', label: 'Reports', icon: <IconReports /> },
 ];
 
 export function Sidebar({ activeSection, onNavigate, liveStatus, verificationCount, newLeadsCount }: SidebarProps) {
