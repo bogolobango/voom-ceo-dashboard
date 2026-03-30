@@ -873,7 +873,7 @@ export default function viteApiPlugin(): Plugin {
               .from("analytics_events")
               .select("vendorId, createdAt")
               .eq("eventType", "whatsapp_tap")
-              .contains("metadata", { source: "outreach_invite" })
+              .filter("metadata->>'source'", "eq", "outreach_invite")
               .not("vendorId", "is", null)
               .order("createdAt", { ascending: false });
             if (error) throw error;
@@ -995,10 +995,12 @@ export default function viteApiPlugin(): Plugin {
                     if (inserted) { newGroups.push(inserted); linksNew++; }
                   }
                 }
-                await sb.from("wa_scrape_jobs").insert({
-                  keywords, platforms, status: "completed", linksFound: discovered.length,
-                  linksNew, startedAt: new Date().toISOString(), completedAt: new Date().toISOString(),
-                }).catch(() => {});
+                try {
+                  await sb.from("wa_scrape_jobs").insert({
+                    keywords, platforms, status: "completed", linksFound: discovered.length,
+                    linksNew, startedAt: new Date().toISOString(), completedAt: new Date().toISOString(),
+                  });
+                } catch { /* non-fatal */ }
               }
             }
 
