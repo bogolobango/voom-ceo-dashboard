@@ -35,7 +35,8 @@ async function scrapeViaGoogle(
     const query = encodeURIComponent(
       `site:chat.whatsapp.com OR "chat.whatsapp.com" ${keyword}`
     );
-    const url = `https://serpapi.com/search.json?engine=google&q=${query}&num=20&location=Ghana&google_domain=google.com.gh&hl=en&gl=gh&api_key=${apiKey}`;
+    // tbs=qdr:m = past month only — keeps links fresh and joinable
+    const url = `https://serpapi.com/search.json?engine=google&q=${query}&num=20&location=Ghana&google_domain=google.com.gh&hl=en&gl=gh&tbs=qdr:m&api_key=${apiKey}`;
 
     try {
       const res = await fetch(url);
@@ -243,6 +244,30 @@ function getMockGroups(keywords: string[]): DiscoveredGroup[] {
   ];
 }
 
+// ── Link Validator: checks if a WhatsApp invite link is still active ──────────
+async function isLinkActive(inviteLink: string): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(inviteLink, {
+      signal: controller.signal,
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; WhatsAppBot/2.0)" },
+    });
+    clearTimeout(timeout);
+    const html = await res.text();
+    // WhatsApp returns 200 for both valid and invalid links,
+    // but invalid pages always contain one of these strings
+    const invalid =
+      html.includes("invalid") ||
+      html.includes("no longer valid") ||
+      html.includes("revoked") ||
+      html.includes("This link is not valid");
+    return !invalid;
+  } catch {
+    return false; // timeout or network error → treat as dead
+  }
+}
+
 // ── Main Orchestrator ──────────────────────────────────────────────────────────
 export interface ScrapeOptions {
   keywords: string[];
@@ -286,9 +311,18 @@ export async function discoverWhatsAppGroups(
 
   // Deduplicate by invite link
   const seen = new Set<string>();
-  return allResults.filter((g) => {
+  const unique = allResults.filter((g) => {
     if (seen.has(g.inviteLink)) return false;
     seen.add(g.inviteLink);
     return true;
   });
+
+  // Validate all links in parallel — skip expired/revoked ones
+  console.log(`[Scraper] Validating ${unique.length} discovered links...`);
+  const validationResults = await Promise.all(
+    unique.map((g) => isLinkActive(g.inviteLink))
+  );
+  const active = unique.filter((_, i) => validationResults[i]);
+  console.log(`[Scraper] ${active.length}/${unique.length} links are active.`);
+  return active;
 }
