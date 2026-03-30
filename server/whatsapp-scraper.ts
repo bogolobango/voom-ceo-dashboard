@@ -33,9 +33,9 @@ async function scrapeViaGoogle(
 
   for (const keyword of keywords) {
     const query = encodeURIComponent(
-      `site:chat.whatsapp.com OR "chat.whatsapp.com" ${keyword} Ghana`
+      `site:chat.whatsapp.com OR "chat.whatsapp.com" ${keyword}`
     );
-    const url = `https://serpapi.com/search.json?q=${query}&num=20&api_key=${apiKey}`;
+    const url = `https://serpapi.com/search.json?engine=google&q=${query}&num=20&location=Ghana&google_domain=google.com.gh&hl=en&gl=gh&api_key=${apiKey}`;
 
     try {
       const res = await fetch(url);
