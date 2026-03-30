@@ -9,8 +9,6 @@
  * returning mock data so the dashboard UI can be developed and tested immediately.
  */
 
-import fetch from "node-fetch";
-
 export interface DiscoveredGroup {
   inviteLink: string;
   source: string;

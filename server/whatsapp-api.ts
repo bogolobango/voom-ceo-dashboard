@@ -14,8 +14,6 @@
  *  WA_BUSINESS_ACCOUNT_ID — Your WhatsApp Business Account ID
  */
 
-import fetch from "node-fetch";
-
 const WA_API_BASE = "https://graph.facebook.com/v21.0";
 
 export interface WaConfig {
