@@ -43,9 +43,9 @@ async function scrapeViaGoogle(
       const organicResults: any[] = data?.organic_results || [];
 
       for (const item of organicResults) {
-        const links = extractWhatsAppLinks(
-          `${item.link || ""} ${item.snippet || ""}`
-        );
+        // Stringify the whole result to catch links in snippet, description,
+        // about_this_result, sitelinks, etc.
+        const links = extractWhatsAppLinks(JSON.stringify(item));
         for (const link of links) {
           results.push({
             inviteLink: link,
