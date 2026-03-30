@@ -22,6 +22,8 @@ import { Security } from '../components/sections/Security';
 import { CompetitiveIntel } from '../components/sections/CompetitiveIntel';
 import { Analytics } from '../components/sections/Analytics';
 import { VerificationQueue } from '../components/sections/VerificationQueue';
+import { MarketExpansion } from '../components/sections/MarketExpansion';
+import { Reports } from '../components/sections/Reports';
 import {
   fetchStats, fetchVendors, fetchOrders, fetchProducts,
   fetchPartRequests, fetchRevenue, fetchGrowth, fetchBriefing,
@@ -31,7 +33,7 @@ import {
 } from '../lib/voomApi';
 import { toast } from 'sonner';
 
-type Section = 'briefing' | 'overview' | 'vendors' | 'products' | 'orders' | 'revenue' | 'part-requests' | 'growth' | 'crm' | 'security' | 'competitive' | 'analytics' | 'verification' | 'settings';
+type Section = 'briefing' | 'overview' | 'vendors' | 'products' | 'orders' | 'revenue' | 'part-requests' | 'growth' | 'crm' | 'security' | 'competitive' | 'analytics' | 'verification' | 'expansion' | 'reports' | 'settings';
 
 const SECTION_LABELS: Record<Section, string> = {
   briefing: 'Morning Briefing',
@@ -47,6 +49,8 @@ const SECTION_LABELS: Record<Section, string> = {
   competitive: 'Competitive Intel',
   analytics: 'Analytics',
   verification: 'Document Review',
+  expansion: 'Expansion',
+  reports: 'Reports',
   settings: 'Settings',
 };
 
@@ -246,6 +250,16 @@ export default function Home() {
       case 'verification': return (
         <WidgetErrorBoundary fallbackTitle="Document Review failed to load">
           <VerificationQueue />
+        </WidgetErrorBoundary>
+      );
+      case 'expansion': return (
+        <WidgetErrorBoundary fallbackTitle="Expansion failed to load">
+          <MarketExpansion />
+        </WidgetErrorBoundary>
+      );
+      case 'reports': return (
+        <WidgetErrorBoundary fallbackTitle="Reports failed to load">
+          <Reports />
         </WidgetErrorBoundary>
       );
       default: return (
