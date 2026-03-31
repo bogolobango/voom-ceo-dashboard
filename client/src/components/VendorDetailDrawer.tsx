@@ -19,6 +19,7 @@ import {
   fetchVendorNotifications, fetchVendorSubscriptionEvents,
   updateVendorStatus, updateVendorTier, updateVendorFeatured,
   sendVendorNotification, fetchAnalyticsUsers, verifyUser, updateUserRole, reviewVendorDocs,
+  updateVendorProfile,
 } from '../lib/voomApi';
 
 // ─── Status / Tier Helpers ───
@@ -233,6 +234,57 @@ function OverviewTab({ vendor }: { vendor: VendorDetail }) {
   const [tierGranted, setTierGranted] = useState(false);
   const queryClient = useQueryClient();
 
+  // ── Edit mode ──────────────────────────────────────────────────────────────
+  const [isEditing, setIsEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [editForm, setEditForm] = useState({
+    businessName: vendor.businessName,
+    phone: vendor.phone,
+    whatsapp: vendor.whatsapp ?? '',
+    email: vendor.email ?? '',
+    address: vendor.address ?? '',
+    ghanaCardNumber: vendor.ghanaCardNumber ?? '',
+  });
+
+  const setField = (k: keyof typeof editForm) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setEditForm(f => ({ ...f, [k]: e.target.value }));
+
+  const handleSaveProfile = async () => {
+    setSaving(true);
+    setSaveError('');
+    const ok = await updateVendorProfile(vendor.id, {
+      businessName: editForm.businessName || undefined,
+      phone: editForm.phone || undefined,
+      whatsapp: editForm.whatsapp || undefined,
+      email: editForm.email || undefined,
+      address: editForm.address || undefined,
+      ghanaCardNumber: editForm.ghanaCardNumber || undefined,
+    });
+    setSaving(false);
+    if (ok) {
+      setIsEditing(false);
+      setSaveError('');
+      queryClient.invalidateQueries({ queryKey: ['vendorDetail', vendor.id] });
+      queryClient.invalidateQueries({ queryKey: ['vendors'] });
+    } else {
+      setSaveError('Failed to save. Please try again.');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setSaveError('');
+    setEditForm({
+      businessName: vendor.businessName,
+      phone: vendor.phone,
+      whatsapp: vendor.whatsapp ?? '',
+      email: vendor.email ?? '',
+      address: vendor.address ?? '',
+      ghanaCardNumber: vendor.ghanaCardNumber ?? '',
+    });
+  };
+
   const handleStatusChange = useCallback(async (newStatus: string) => {
     setStatusUpdating(true);
     const ok = await updateVendorStatus(vendor.id, newStatus);
@@ -388,13 +440,112 @@ function OverviewTab({ vendor }: { vendor: VendorDetail }) {
         ))}
       </div>
 
-      {/* Contact info */}
-      <SectionCard title="Contact">
-        <InfoRow label="Phone" value={vendor.phone} />
-        {vendor.whatsapp && <InfoRow label="WhatsApp" value={vendor.whatsapp} />}
-        {vendor.email && <InfoRow label="Email" value={vendor.email} />}
-        {vendor.address && <InfoRow label="Address" value={vendor.address} />}
-      </SectionCard>
+      {/* Contact info — editable */}
+      <div style={{
+        background: 'rgba(255,255,255,0.6)',
+        backdropFilter: 'blur(12px)',
+        borderRadius: '0.875rem',
+        border: '1px solid rgba(79,70,229,0.08)',
+        padding: '1rem',
+        marginBottom: '0.75rem',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+          <h4 style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#0F172A', margin: 0, fontFamily: 'Plus Jakarta Sans' }}>
+            Contact
+          </h4>
+          {!isEditing ? (
+            <button
+              onClick={() => setIsEditing(true)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.3rem',
+                padding: '0.3rem 0.625rem', borderRadius: '0.5rem',
+                border: '1.5px solid rgba(79,70,229,0.2)',
+                background: 'rgba(79,70,229,0.04)',
+                color: '#4F46E5', fontSize: '0.72rem', fontWeight: 700,
+                cursor: 'pointer', fontFamily: 'Plus Jakarta Sans',
+              }}
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+              Edit
+            </button>
+          ) : (
+            <div style={{ display: 'flex', gap: '0.375rem' }}>
+              <button
+                onClick={handleCancelEdit}
+                style={{
+                  padding: '0.3rem 0.625rem', borderRadius: '0.5rem',
+                  border: '1.5px solid rgba(100,116,139,0.2)',
+                  background: 'transparent', color: '#64748B',
+                  fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                  fontFamily: 'Plus Jakarta Sans',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveProfile}
+                disabled={saving}
+                style={{
+                  padding: '0.3rem 0.75rem', borderRadius: '0.5rem', border: 'none',
+                  background: saving ? 'rgba(5,150,105,0.5)' : '#059669',
+                  color: 'white', fontSize: '0.72rem', fontWeight: 700,
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                  fontFamily: 'Plus Jakarta Sans',
+                }}
+              >
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {saveError && (
+          <div style={{ marginBottom: '0.625rem', fontSize: '0.75rem', color: '#E11D48', background: 'rgba(225,29,72,0.05)', padding: '0.375rem 0.625rem', borderRadius: '0.5rem' }}>
+            {saveError}
+          </div>
+        )}
+
+        {isEditing ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+            {([
+              { key: 'businessName', label: 'Business Name', type: 'text' },
+              { key: 'phone', label: 'Phone', type: 'tel' },
+              { key: 'whatsapp', label: 'WhatsApp', type: 'tel' },
+              { key: 'email', label: 'Email', type: 'email' },
+              { key: 'address', label: 'Address', type: 'text' },
+              { key: 'ghanaCardNumber', label: 'Ghana Card No.', type: 'text' },
+            ] as const).map(({ key, label, type }) => (
+              <div key={key}>
+                <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#94A3B8', letterSpacing: '0.04em', textTransform: 'uppercase', display: 'block', marginBottom: '0.2rem' }}>
+                  {label}
+                </label>
+                <input
+                  type={type}
+                  value={editForm[key]}
+                  onChange={setField(key)}
+                  style={{
+                    width: '100%', padding: '0.5rem 0.75rem', boxSizing: 'border-box',
+                    borderRadius: '0.5rem', border: '1.5px solid rgba(79,70,229,0.15)',
+                    background: 'rgba(248,250,252,0.9)', fontSize: '0.8125rem', color: '#0F172A',
+                    outline: 'none', fontFamily: 'Plus Jakarta Sans',
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <>
+            <InfoRow label="Phone" value={vendor.phone} />
+            {vendor.whatsapp && <InfoRow label="WhatsApp" value={vendor.whatsapp} />}
+            {vendor.email && <InfoRow label="Email" value={vendor.email} />}
+            {vendor.address && <InfoRow label="Address" value={vendor.address} />}
+            {vendor.ghanaCardNumber && <InfoRow label="Ghana Card" value={vendor.ghanaCardNumber} />}
+          </>
+        )}
+      </div>
 
       {/* Subscription */}
       <SectionCard title="Subscription">

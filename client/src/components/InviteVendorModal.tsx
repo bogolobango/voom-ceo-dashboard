@@ -1,15 +1,24 @@
 /**
- * InviteVendorModal — Invite a new vendor via WhatsApp
- * Collects business name + phone, creates a pending vendor record,
- * then opens a pre-written WhatsApp invitation message.
+ * InviteVendorModal — Invite a vendor via WhatsApp
+ * Two modes:
+ *   1. Brand-new vendor: creates a pending vendor record, then sends WA invite
+ *   2. Existing unclaimed vendor (prefill): updates profile if changed, then sends outreach invite
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+
+export interface VendorPrefill {
+  vendorId: number;
+  businessName: string;
+  phone: string;
+  city?: string | null;
+}
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onInvited?: () => void;
+  prefill?: VendorPrefill;
 }
 
 function formatGhanaWa(phone: string): string {
@@ -55,7 +64,7 @@ const LABEL_STYLE: React.CSSProperties = {
   display: 'block',
 };
 
-export function InviteVendorModal({ open, onClose, onInvited }: Props) {
+export function InviteVendorModal({ open, onClose, onInvited, prefill }: Props) {
   const [step, setStep] = useState<'form' | 'success'>('form');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -65,10 +74,31 @@ export function InviteVendorModal({ open, onClose, onInvited }: Props) {
 
   const [form, setForm] = useState({ businessName: '', phone: '', city: '' });
 
+  useEffect(() => {
+    if (open) {
+      if (prefill) {
+        setForm({
+          businessName: prefill.businessName,
+          phone: prefill.phone,
+          city: prefill.city ?? '',
+        });
+      } else {
+        setForm({ businessName: '', phone: '', city: '' });
+      }
+      setStep('form');
+      setError('');
+      setWhatsappUrl('');
+      setInvitedName('');
+      setCopied(false);
+    }
+  }, [open, prefill]);
+
   if (!open) return null;
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const isExisting = !!prefill?.vendorId;
 
   const handleSubmit = async () => {
     const name = form.businessName.trim();
@@ -80,17 +110,40 @@ export function InviteVendorModal({ open, onClose, onInvited }: Props) {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/vendors/invite', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ businessName: name, phone, city: form.city.trim() || undefined }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to send invite');
-      setWhatsappUrl(data.whatsappUrl);
-      setInvitedName(name);
-      setStep('success');
-      onInvited?.();
+      if (isExisting) {
+        // Update vendor profile if anything changed
+        const patchBody: Record<string, string> = {};
+        if (name !== prefill!.businessName) patchBody.businessName = name;
+        if (phone !== prefill!.phone) patchBody.whatsapp = phone;
+        if (Object.keys(patchBody).length > 0) {
+          await fetch(`/api/vendors/${prefill!.vendorId}/profile`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(patchBody),
+          });
+        }
+        // Get outreach invite WA URL
+        const res = await fetch(`/api/vendors/${prefill!.vendorId}/outreach-invite`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to get invite link');
+        setWhatsappUrl(data.whatsappUrl);
+        setInvitedName(name);
+        setStep('success');
+        onInvited?.();
+      } else {
+        // Create brand-new vendor record
+        const res = await fetch('/api/vendors/invite', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ businessName: name, phone, city: form.city.trim() || undefined }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to send invite');
+        setWhatsappUrl(data.whatsappUrl);
+        setInvitedName(name);
+        setStep('success');
+        onInvited?.();
+      }
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -104,23 +157,16 @@ export function InviteVendorModal({ open, onClose, onInvited }: Props) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // fallback: select the URL
+      // fallback
     }
   };
 
   const handleClose = () => {
-    setStep('form');
-    setForm({ businessName: '', phone: '', city: '' });
-    setError('');
-    setWhatsappUrl('');
-    setInvitedName('');
-    setCopied(false);
     onClose();
   };
 
   return (
     <>
-      {/* Backdrop */}
       <div
         onClick={handleClose}
         style={{
@@ -131,7 +177,6 @@ export function InviteVendorModal({ open, onClose, onInvited }: Props) {
           padding: '1rem',
         }}
       >
-        {/* Modal */}
         <div
           onClick={e => e.stopPropagation()}
           style={{
@@ -151,10 +196,14 @@ export function InviteVendorModal({ open, onClose, onInvited }: Props) {
           }}>
             <div>
               <h2 style={{ fontFamily: 'Plus Jakarta Sans', fontWeight: 800, fontSize: '1.0625rem', color: '#0F172A', margin: 0 }}>
-                Invite Vendor
+                {isExisting ? 'Send WhatsApp Invite' : 'Invite Vendor'}
               </h2>
               <p style={{ fontSize: '0.78rem', color: '#94A3B8', margin: '0.2rem 0 0' }}>
-                {step === 'form' ? 'Create a pending account & send WhatsApp invite' : 'Invitation ready to send'}
+                {step === 'form'
+                  ? isExisting
+                    ? 'Review details then open WhatsApp to send'
+                    : 'Create a pending account & send WhatsApp invite'
+                  : 'Invitation ready to send'}
               </p>
             </div>
             <button
@@ -189,7 +238,7 @@ export function InviteVendorModal({ open, onClose, onInvited }: Props) {
                   />
                 </div>
                 <div>
-                  <label style={LABEL_STYLE}>WhatsApp / Phone *</label>
+                  <label style={LABEL_STYLE}>WhatsApp Number *</label>
                   <input
                     style={INPUT_STYLE}
                     placeholder="e.g. 0244123456 or +233244123456"
@@ -202,16 +251,31 @@ export function InviteVendorModal({ open, onClose, onInvited }: Props) {
                     Ghana numbers: start with 0XX or +233XX
                   </p>
                 </div>
-                <div>
-                  <label style={LABEL_STYLE}>City <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
-                  <input
-                    style={INPUT_STYLE}
-                    placeholder="e.g. Accra, Kumasi, Takoradi"
-                    value={form.city}
-                    onChange={set('city')}
-                    onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-                  />
-                </div>
+                {!isExisting && (
+                  <div>
+                    <label style={LABEL_STYLE}>City <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
+                    <input
+                      style={INPUT_STYLE}
+                      placeholder="e.g. Accra, Kumasi, Takoradi"
+                      value={form.city}
+                      onChange={set('city')}
+                      onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+                    />
+                  </div>
+                )}
+
+                {isExisting && (
+                  <div style={{
+                    padding: '0.625rem 0.875rem',
+                    background: 'rgba(79,70,229,0.04)',
+                    border: '1px solid rgba(79,70,229,0.12)',
+                    borderRadius: '0.625rem',
+                    fontSize: '0.78rem',
+                    color: '#64748B',
+                  }}>
+                    Edit the name or number above if needed, then click <strong style={{ color: '#0F172A' }}>Send Invite</strong>. The message opens in WhatsApp — send it from your phone.
+                  </div>
+                )}
 
                 {error && (
                   <div style={{
@@ -245,7 +309,7 @@ export function InviteVendorModal({ open, onClose, onInvited }: Props) {
                     style={{
                       flex: 2, padding: '0.75rem',
                       borderRadius: '0.75rem', border: 'none',
-                      background: loading ? 'rgba(79,70,229,0.5)' : 'linear-gradient(135deg,#4F46E5 0%,#7C3AED 100%)',
+                      background: loading ? 'rgba(37,211,102,0.5)' : 'linear-gradient(135deg,#25D366 0%,#128C7E 100%)',
                       color: 'white', fontSize: '0.875rem', fontWeight: 700,
                       cursor: loading ? 'not-allowed' : 'pointer',
                       fontFamily: 'Plus Jakarta Sans',
@@ -257,14 +321,14 @@ export function InviteVendorModal({ open, onClose, onInvited }: Props) {
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: 'spin 1s linear infinite' }}>
                           <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
                         </svg>
-                        Creating…
+                        {isExisting ? 'Preparing…' : 'Creating…'}
                       </>
                     ) : (
                       <>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.44 2 2 0 0 1 3.58 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.96a16 16 0 0 0 6.29 6.29l1.41-1.42a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
+                          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z"/>
                         </svg>
-                        Create & Invite
+                        {isExisting ? 'Send Invite' : 'Create & Invite'}
                       </>
                     )}
                   </button>
@@ -272,26 +336,27 @@ export function InviteVendorModal({ open, onClose, onInvited }: Props) {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', alignItems: 'center', textAlign: 'center' }}>
-                {/* Success icon */}
                 <div style={{
                   width: 64, height: 64, borderRadius: '50%',
-                  background: 'rgba(5,150,105,0.1)',
+                  background: 'rgba(37,211,102,0.1)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.5" strokeLinecap="round">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#25D366" strokeWidth="2.5" strokeLinecap="round">
                     <polyline points="20 6 9 17 4 12"/>
                   </svg>
                 </div>
                 <div>
                   <h3 style={{ fontFamily: 'Plus Jakarta Sans', fontWeight: 800, fontSize: '1rem', color: '#0F172A', margin: 0 }}>
-                    Vendor account created!
+                    {isExisting ? 'Ready to send!' : 'Vendor account created!'}
                   </h3>
                   <p style={{ fontSize: '0.83rem', color: '#64748B', margin: '0.4rem 0 0' }}>
-                    <strong style={{ color: '#0F172A' }}>{invitedName}</strong> has been added as a pending vendor. Now send them the WhatsApp invite.
+                    {isExisting
+                      ? <>Tap below to open WhatsApp and send the invite to <strong style={{ color: '#0F172A' }}>{invitedName}</strong>.</>
+                      : <><strong style={{ color: '#0F172A' }}>{invitedName}</strong> has been added as a pending vendor. Now send them the WhatsApp invite.</>
+                    }
                   </p>
                 </div>
 
-                {/* WhatsApp CTA */}
                 <a
                   href={whatsappUrl}
                   target="_blank"
@@ -313,7 +378,7 @@ export function InviteVendorModal({ open, onClose, onInvited }: Props) {
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
                     <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z"/>
                   </svg>
-                  Send WhatsApp Invite
+                  Open WhatsApp
                 </a>
 
                 <button

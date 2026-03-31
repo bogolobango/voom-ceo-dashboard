@@ -17,7 +17,7 @@ import {
   generateClaimLink,
 } from '../../lib/voomApi';
 import { VendorDetailDrawer } from '../VendorDetailDrawer';
-import { InviteVendorModal } from '../InviteVendorModal';
+import { InviteVendorModal, type VendorPrefill } from '../InviteVendorModal';
 
 function hasValidToken(v: Vendor): boolean {
   return !!(
@@ -72,6 +72,7 @@ export function Vendors({ vendors, onRefresh }: VendorsProps) {
   const [selectedVendorId, setSelectedVendorId] = useState<number | null>(null);
   const [drawerOpen, setDrawerOpen]       = useState(false);
   const [inviteOpen, setInviteOpen]       = useState(false);
+  const [prefillVendor, setPrefillVendor] = useState<VendorPrefill | undefined>(undefined);
   const [invitedMap, setInvitedMap]       = useState<Map<number, string>>(new Map());
   const [invitingId, setInvitingId]       = useState<number | null>(null);
   const [reviewedIds, setReviewedIds]     = useState<Set<number>>(new Set());
@@ -104,20 +105,16 @@ export function Vendors({ vendors, onRefresh }: VendorsProps) {
     },
   });
 
-  const handleInvite = useCallback(async (e: React.MouseEvent, vendor: Vendor) => {
+  const handleInvite = useCallback((e: React.MouseEvent, vendor: Vendor) => {
     e.stopPropagation();
-    if (invitingId !== null) return;
-    setInvitingId(vendor.id);
-    try {
-      const { whatsappUrl } = await sendOutreachInvite(vendor.id);
-      setInvitedMap(prev => new Map(prev).set(vendor.id, new Date().toISOString()));
-      window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
-    } catch {
-      // silent
-    } finally {
-      setInvitingId(null);
-    }
-  }, [invitingId]);
+    setPrefillVendor({
+      vendorId: vendor.id,
+      businessName: vendor.businessName,
+      phone: (vendor as any).whatsapp || vendor.phone,
+      city: vendor.city,
+    });
+    setInviteOpen(true);
+  }, []);
 
   const counts = useMemo(() => ({
     all:            vendors.length,
@@ -522,8 +519,13 @@ export function Vendors({ vendors, onRefresh }: VendorsProps) {
 
       <InviteVendorModal
         open={inviteOpen}
-        onClose={() => setInviteOpen(false)}
-        onInvited={() => { onRefresh?.(); }}
+        prefill={prefillVendor}
+        onClose={() => { setInviteOpen(false); setPrefillVendor(undefined); }}
+        onInvited={() => {
+          if (prefillVendor) setInvitedMap(prev => new Map(prev).set(prefillVendor.vendorId, new Date().toISOString()));
+          queryClient.invalidateQueries({ queryKey: ['vendors'] });
+          onRefresh?.();
+        }}
       />
     </div>
   );

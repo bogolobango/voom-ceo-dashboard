@@ -817,6 +817,23 @@ export default function viteApiPlugin(): Plugin {
             return json(res, { source: "database", data: data ?? [] });
           }
 
+          // ─── /api/vendors/:id/profile (PATCH) ───
+          const vendorProfileMatch = url.match(/^\/api\/vendors\/(\d+)\/profile$/);
+          if (vendorProfileMatch && req.method === "PATCH") {
+            if (!sb) return json(res, { error: "Database not available" }, 503);
+            const vendorId = parseInt(vendorProfileMatch[1], 10);
+            const body = await parseBody(req);
+            const allowed = ["businessName", "phone", "whatsapp", "email", "address", "ghanaCardNumber"];
+            const updateFields: Record<string, any> = { updatedAt: new Date().toISOString() };
+            for (const key of allowed) {
+              if (body[key] !== undefined) updateFields[key] = String(body[key]).trim() || null;
+            }
+            const { data, error } = await sb.from("vendors")
+              .update(updateFields).eq("id", vendorId).select().single();
+            if (error) throw error;
+            return json(res, data);
+          }
+
           // ─── /api/vendors/:id/status (PATCH) ───
           const vendorStatusMatch = url.match(/^\/api\/vendors\/(\d+)\/status$/);
           if (vendorStatusMatch && req.method === "PATCH") {
@@ -892,11 +909,11 @@ export default function viteApiPlugin(): Plugin {
             const { data: vendor, error: vErr } = await sb
               .from("vendors").select("id, businessName, phone, whatsapp, userId").eq("id", vendorId).single();
             if (vErr || !vendor) return json(res, { error: "Vendor not found" }, 404);
-            const digitsOnly = vendor.phone.replace(/\D/g, "");
-            let waNumber = digitsOnly;
-            if (digitsOnly.startsWith("233")) waNumber = digitsOnly;
-            else if (digitsOnly.startsWith("0") && digitsOnly.length === 10) waNumber = "233" + digitsOnly.slice(1);
-            else if (digitsOnly.length === 9) waNumber = "233" + digitsOnly;
+            const rawPhone = (vendor.whatsapp || vendor.phone || "").replace(/\D/g, "");
+            let waNumber = rawPhone;
+            if (rawPhone.startsWith("233")) waNumber = rawPhone;
+            else if (rawPhone.startsWith("0") && rawPhone.length === 10) waNumber = "233" + rawPhone.slice(1);
+            else if (rawPhone.length === 9) waNumber = "233" + rawPhone;
             const vendorPageUrl = `https://voomparts.com/vendors/${vendorId}`;
             const message =
               `Hi! 👋 Your shop, *${vendor.businessName}*, is already live on VOOM Ghana — Ghana's online auto-parts marketplace.\n\n` +

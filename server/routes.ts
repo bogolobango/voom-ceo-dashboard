@@ -1243,6 +1243,28 @@ router.get("/api/vendors/:id/subscription-events", async (req, res) => {
   }
 });
 
+router.patch("/api/vendors/:id/profile", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const vendorId = parseInt(req.params.id, 10);
+    if (isNaN(vendorId)) return res.status(400).json({ error: "Invalid vendor ID" });
+    const allowed = ["businessName", "phone", "whatsapp", "email", "address", "ghanaCardNumber"];
+    const updateFields: Record<string, any> = { updatedAt: new Date().toISOString() };
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) updateFields[key] = String(req.body[key]).trim() || null;
+    }
+    const { data, error } = await supabase!
+      .from("vendors").update(updateFields).eq("id", vendorId).select().single();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: "Vendor not found" });
+    cache.del(CACHE_KEYS.stats);
+    res.json(data);
+  } catch (error) {
+    safeLogError("Vendor profile update error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
 router.patch("/api/vendors/:id/status", async (req, res) => {
   if (dbUnavailable(res)) return;
   try {
@@ -1617,12 +1639,12 @@ router.post("/api/vendors/:id/outreach-invite", async (req, res) => {
     const claimResult = await getOrCreateClaimToken(vendorId);
     const claimUrl = claimResult?.claimUrl ?? `https://voomparts.com/vendors/${vendorId}`;
 
-    // Build WhatsApp number
-    const digitsOnly = vendor.phone.replace(/\D/g, "");
-    let waNumber = digitsOnly;
-    if (digitsOnly.startsWith("233")) waNumber = digitsOnly;
-    else if (digitsOnly.startsWith("0") && digitsOnly.length === 10) waNumber = "233" + digitsOnly.slice(1);
-    else if (digitsOnly.length === 9) waNumber = "233" + digitsOnly;
+    // Build WhatsApp number (prefer whatsapp field, fall back to phone)
+    const rawPhone = (vendor.whatsapp || vendor.phone || "").replace(/\D/g, "");
+    let waNumber = rawPhone;
+    if (rawPhone.startsWith("233")) waNumber = rawPhone;
+    else if (rawPhone.startsWith("0") && rawPhone.length === 10) waNumber = "233" + rawPhone.slice(1);
+    else if (rawPhone.length === 9) waNumber = "233" + rawPhone;
 
     const vendorPageUrl = `https://voomparts.com/vendors/${vendorId}`;
     const message =

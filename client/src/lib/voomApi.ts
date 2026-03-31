@@ -728,6 +728,20 @@ export async function updateVendorTier(vendorId: number, tier: string, tierExpir
   } catch { return false; }
 }
 
+export async function updateVendorProfile(
+  vendorId: number,
+  fields: { businessName?: string; phone?: string; whatsapp?: string; email?: string; address?: string; ghanaCardNumber?: string }
+): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/vendors/${vendorId}/profile`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
 export async function updateVendorFeatured(vendorId: number, isFeatured: boolean, featuredUntil?: string): Promise<boolean> {
   try {
     const res = await fetch(`/api/vendors/${vendorId}/featured`, {
