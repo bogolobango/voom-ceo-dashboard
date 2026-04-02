@@ -7,13 +7,13 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   fetchAnalyticsUsers, fetchProductAnalytics, fetchVisitorAnalytics, fetchBehaviorFunnel,
-  fetchTrafficAnalytics,
+  fetchTrafficAnalytics, fetchSupplyDemandGaps, fetchUnitEconomics,
   type AnalyticsUser, type ProductViewStat, type VisitorAnalyticsData, type BehaviorFunnelData,
-  type TrafficData,
+  type TrafficData, type SupplyDemandData, type UnitEconomics,
 } from '../../lib/voomApi';
 import { UserAnalyticsDrawer } from '../UserAnalyticsDrawer';
 
-type Tab = 'users' | 'products' | 'traffic';
+type Tab = 'users' | 'products' | 'traffic' | 'gaps' | 'economics';
 type TimeRange = '1d' | '7d' | '30d' | 'all';
 
 const TIME_LABELS: Record<TimeRange, string> = { '1d': 'Today', '7d': '7 Days', '30d': '30 Days', all: 'All Time' };
@@ -773,6 +773,232 @@ function TrafficTab() {
   );
 }
 
+// ─── Supply-Demand Gap Tab ───
+
+function SupplyDemandTab() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['supply-demand-gaps'],
+    queryFn: fetchSupplyDemandGaps,
+    staleTime: 120_000,
+  });
+
+  if (isLoading) return <div style={{ textAlign: 'center', padding: '3rem', color: '#94A3B8' }}>Loading supply-demand data...</div>;
+  if (!data || (data.gaps.length === 0 && data.topSearches.length === 0)) return (
+    <GlassSection>
+      <SectionTitle sub="Cross-references buyer searches with vendor pipeline">No Search Data Yet</SectionTitle>
+      <div style={{ padding: '1.5rem', textAlign: 'center', color: '#94A3B8', fontSize: '0.8125rem' }}>
+        Supply-demand gap analysis requires search event data from the marketplace.
+      </div>
+    </GlassSection>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {/* KPIs */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.5rem' }}>
+        {[
+          { label: 'Total Searches (7d)', value: data.totalSearches, color: '#4F46E5' },
+          { label: 'Unique Queries', value: data.topSearches.length, color: '#7C3AED' },
+          { label: 'Zero-Result Gaps', value: data.gaps.length, color: '#E11D48' },
+          { label: 'Zero-Result Rate', value: `${data.zeroResultRate}%`, color: '#D97706' },
+        ].map(s => (
+          <GlassSection key={s.label} style={{ padding: '0.875rem', textAlign: 'center' }}>
+            <p style={{ fontSize: '1.5rem', fontWeight: 800, color: s.color, margin: 0, fontFamily: 'Space Grotesk' }}>{s.value}</p>
+            <p style={{ fontSize: '0.68rem', color: '#94A3B8', margin: '0.125rem 0 0', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>{s.label}</p>
+          </GlassSection>
+        ))}
+      </div>
+
+      {/* Supply Gaps — the killer table */}
+      <GlassSection>
+        <SectionTitle sub="Buyers searched but found nothing — these are vendor recruitment targets">
+          Supply Gaps (Zero-Result Searches)
+        </SectionTitle>
+        {data.gaps.length === 0 ? (
+          <p style={{ color: '#94A3B8', fontSize: '0.8125rem', textAlign: 'center', padding: '1rem' }}>No zero-result searches in the last 7 days</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+            {data.gaps.map(gap => (
+              <div key={gap.query} style={{
+                padding: '0.75rem', borderRadius: '0.75rem',
+                background: 'rgba(225,29,72,0.03)', borderLeft: '3px solid #E11D48',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem' }}>
+                  <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#0F172A' }}>"{gap.query}"</span>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#E11D48', fontFamily: 'Space Grotesk' }}>
+                    {gap.searchCount} search{gap.searchCount !== 1 ? 'es' : ''}
+                  </span>
+                </div>
+                {gap.matchedVendors.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <p style={{ fontSize: '0.68rem', color: '#64748B', margin: 0, fontWeight: 600 }}>Likely vendors in pipeline:</p>
+                    {gap.matchedVendors.map((v: any) => (
+                      <div key={v.vendorId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.25rem 0.5rem', borderRadius: '0.375rem', background: 'rgba(248,250,252,0.6)' }}>
+                        <span style={{ fontSize: '0.78rem', color: '#0F172A' }}>{v.businessName} ({v.city || 'Ghana'})</span>
+                        <a
+                          href={`https://wa.me/${(v.whatsapp || v.phone || '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hi ${v.businessName}, buyers on VOOM are searching for "${gap.query}". Do you carry this part? List it at voomparts.com`)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            padding: '0.15rem 0.5rem', borderRadius: '0.375rem',
+                            background: '#25D366', color: 'white', fontSize: '0.68rem', fontWeight: 600,
+                            textDecoration: 'none', flexShrink: 0,
+                          }}
+                        >
+                          Message
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ fontSize: '0.72rem', color: '#94A3B8', margin: 0 }}>No matching vendors found in pipeline</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </GlassSection>
+
+      {/* Top Searches */}
+      <GlassSection>
+        <SectionTitle sub="All search queries ranked by volume (7 days)">Top Searches</SectionTitle>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+          {data.topSearches.slice(0, 20).map((s, i) => {
+            const isZero = s.resultCount === 0;
+            return (
+              <div key={s.query} style={{
+                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                padding: '0.375rem 0.5rem', borderRadius: '0.375rem',
+                background: isZero ? 'rgba(225,29,72,0.04)' : i % 2 === 0 ? 'rgba(248,250,252,0.6)' : 'transparent',
+                borderLeft: isZero ? '3px solid #E11D48' : '3px solid transparent',
+              }}>
+                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#94A3B8', width: '1.5rem', textAlign: 'center' }}>{i + 1}</span>
+                <span style={{ flex: 1, fontSize: '0.78rem', color: isZero ? '#E11D48' : '#0F172A', fontWeight: isZero ? 600 : 400 }}>{s.query}</span>
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569', fontFamily: 'Space Grotesk' }}>{s.searchCount}x</span>
+                <span style={{
+                  fontSize: '0.62rem', fontWeight: 600, padding: '0.1rem 0.35rem', borderRadius: 999,
+                  color: isZero ? '#E11D48' : '#059669',
+                  background: isZero ? 'rgba(225,29,72,0.1)' : 'rgba(5,150,105,0.1)',
+                }}>
+                  {s.resultCount} result{s.resultCount !== 1 ? 's' : ''}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </GlassSection>
+    </div>
+  );
+}
+
+// ─── Unit Economics Tab ───
+
+function UnitEconomicsTab() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['unit-economics'],
+    queryFn: fetchUnitEconomics,
+    staleTime: 120_000,
+  });
+
+  if (isLoading) return <div style={{ textAlign: 'center', padding: '3rem', color: '#94A3B8' }}>Loading unit economics...</div>;
+  if (!data) return (
+    <GlassSection>
+      <SectionTitle sub="Vendor LTV, CAC, churn, activation metrics">No Data Available</SectionTitle>
+      <p style={{ color: '#94A3B8', fontSize: '0.8125rem', textAlign: 'center', padding: '1rem' }}>
+        Connect the database to see unit economics.
+      </p>
+    </GlassSection>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {/* Core Unit Economics */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.5rem' }}>
+        {[
+          { label: 'MRR', value: `GH₵ ${data.mrr.toLocaleString()}`, color: '#059669' },
+          { label: 'ARPU', value: `GH₵ ${data.arpu}`, sub: 'Avg revenue per vendor', color: '#4F46E5' },
+          { label: 'Vendor LTV', value: `GH₵ ${data.ltv.toLocaleString()}`, sub: 'Lifetime value', color: '#7C3AED' },
+          { label: 'CAC', value: data.cac > 0 ? `GH₵ ${data.cac}` : '$0', sub: 'Founder time only', color: '#D97706' },
+          { label: 'LTV:CAC', value: data.ltvCacRatio ? `${data.ltvCacRatio}:1` : 'N/A', sub: 'Target: >3:1', color: '#0F172A' },
+        ].map(s => (
+          <GlassSection key={s.label} style={{ padding: '0.875rem', textAlign: 'center' }}>
+            <p style={{ fontSize: '1.25rem', fontWeight: 800, color: s.color, margin: 0, fontFamily: 'Space Grotesk' }}>{s.value}</p>
+            <p style={{ fontSize: '0.72rem', fontWeight: 600, color: '#0F172A', margin: '0.25rem 0 0' }}>{s.label}</p>
+            {(s as any).sub && <p style={{ fontSize: '0.62rem', color: '#94A3B8', margin: '0.125rem 0 0' }}>{(s as any).sub}</p>}
+          </GlassSection>
+        ))}
+      </div>
+
+      {/* Vendor Funnel Metrics */}
+      <GlassSection>
+        <SectionTitle sub="Vendor lifecycle conversion rates">Vendor Funnel</SectionTitle>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+          {[
+            { label: 'Total Vendors in Pipeline', value: data.totalVendors, pct: 100, color: '#4F46E5' },
+            { label: 'Active (with sales)', value: data.activeVendors, pct: data.activationRate, color: '#059669' },
+            { label: 'Paid Subscribers', value: data.paidVendors, pct: data.conversionToPaid, color: '#7C3AED' },
+            { label: 'Churned / Lost', value: data.churnedVendors, pct: data.churnRate, color: '#E11D48' },
+          ].map(item => (
+            <div key={item.label}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                <span style={{ fontSize: '0.8rem', color: '#0F172A', fontWeight: 500 }}>{item.label}</span>
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0F172A', fontFamily: 'Space Grotesk' }}>
+                  {item.value} <span style={{ fontSize: '0.68rem', color: '#94A3B8', fontWeight: 400 }}>({item.pct.toFixed(1)}%)</span>
+                </span>
+              </div>
+              <div style={{ height: 6, borderRadius: 999, background: 'rgba(79,70,229,0.06)', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%', width: `${Math.min(item.pct, 100)}%`, borderRadius: 999,
+                  background: item.color, transition: 'width 0.5s ease',
+                }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </GlassSection>
+
+      {/* Investor-ready interpretation */}
+      <GlassSection>
+        <SectionTitle sub="What these numbers mean for fundraising">Investor Lens</SectionTitle>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+          {[
+            {
+              metric: 'Activation Rate',
+              value: `${data.activationRate}%`,
+              verdict: data.activationRate > 20 ? 'Healthy' : data.activationRate > 5 ? 'Needs improvement' : 'Critical — vendors registering but not listing',
+              color: data.activationRate > 20 ? '#059669' : data.activationRate > 5 ? '#D97706' : '#E11D48',
+            },
+            {
+              metric: 'Paid Conversion',
+              value: `${data.conversionToPaid}%`,
+              verdict: data.conversionToPaid > 10 ? 'Strong monetization signal' : data.conversionToPaid > 2 ? 'Early traction' : 'Pre-revenue — focus on activation first',
+              color: data.conversionToPaid > 10 ? '#059669' : data.conversionToPaid > 2 ? '#D97706' : '#64748B',
+            },
+            {
+              metric: 'Churn Rate',
+              value: `${data.churnRate}%`,
+              verdict: data.churnRate < 5 ? 'Excellent retention' : data.churnRate < 15 ? 'Acceptable for early stage' : 'High churn — investigate onboarding',
+              color: data.churnRate < 5 ? '#059669' : data.churnRate < 15 ? '#D97706' : '#E11D48',
+            },
+          ].map(item => (
+            <div key={item.metric} style={{
+              display: 'flex', alignItems: 'center', gap: '0.75rem',
+              padding: '0.5rem 0.75rem', borderRadius: '0.5rem',
+              background: `${item.color}08`, borderLeft: `3px solid ${item.color}`,
+            }}>
+              <div style={{ flex: 1 }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#0F172A' }}>{item.metric}: </span>
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: item.color, fontFamily: 'Space Grotesk' }}>{item.value}</span>
+              </div>
+              <span style={{ fontSize: '0.72rem', color: item.color, fontWeight: 500 }}>{item.verdict}</span>
+            </div>
+          ))}
+        </div>
+      </GlassSection>
+    </div>
+  );
+}
+
 // ─── Main Analytics Component ───
 
 export function Analytics() {
@@ -788,16 +1014,16 @@ export function Analytics() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
         {/* Tab switcher */}
         <div style={{ display: 'flex', background: 'rgba(79,70,229,0.07)', borderRadius: '0.875rem', padding: '0.25rem', gap: '0.125rem' }}>
-          {(['users', 'products', 'traffic'] as Tab[]).map(t => (
+          {(['users', 'products', 'traffic', 'gaps', 'economics'] as Tab[]).map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
-              padding: '0.5rem 1.25rem', borderRadius: '0.625rem', border: 'none', cursor: 'pointer',
+              padding: '0.5rem 0.875rem', borderRadius: '0.625rem', border: 'none', cursor: 'pointer',
               background: tab === t ? '#fff' : 'transparent',
-              fontWeight: tab === t ? 700 : 400, fontSize: '0.85rem',
+              fontWeight: tab === t ? 700 : 400, fontSize: '0.8rem',
               color: tab === t ? '#4F46E5' : '#64748B',
               boxShadow: tab === t ? '0 1px 6px rgba(79,70,229,0.15)' : 'none',
               transition: 'all 0.15s', fontFamily: 'Plus Jakarta Sans',
             }}>
-              {t === 'users' ? '👤 Users' : t === 'products' ? '📦 Products' : '🌐 Traffic'}
+              {t === 'users' ? '👤 Users' : t === 'products' ? '📦 Products' : t === 'traffic' ? '🌐 Traffic' : t === 'gaps' ? '🔍 Supply Gaps' : '💰 Economics'}
             </button>
           ))}
         </div>
@@ -825,6 +1051,8 @@ export function Analytics() {
       {tab === 'users' && <UsersTab onSelectUser={setSelectedUserId} />}
       {tab === 'products' && <ProductsTab timeRange={timeRange} />}
       {tab === 'traffic' && <TrafficTab />}
+      {tab === 'gaps' && <SupplyDemandTab />}
+      {tab === 'economics' && <UnitEconomicsTab />}
     </div>
   );
 }

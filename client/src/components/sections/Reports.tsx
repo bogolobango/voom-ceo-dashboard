@@ -5,7 +5,7 @@
 
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchVendors, fetchStats, fetchOrders, type Vendor, type AdminStats, type Order } from '../../lib/voomApi';
+import { fetchVendors, fetchStats, fetchOrders, fetchVendorAnalytics, fetchBriefing, type Vendor, type AdminStats, type Order, type VendorAnalytics } from '../../lib/voomApi';
 import { toast } from 'sonner';
 
 function SectionTitle({ children, sub }: { children: React.ReactNode; sub?: string }) {
@@ -35,34 +35,54 @@ function VendorValueReport({ vendors }: { vendors: Vendor[] }) {
 
   const selectedVendor = useMemo(() => vendors.find(v => v.id === selectedVendorId), [vendors, selectedVendorId]);
 
-  const generateReport = (vendor: Vendor): string => {
+  // Fetch real analytics for selected vendor
+  const { data: analytics, isLoading: analyticsLoading } = useQuery({
+    queryKey: ['vendor-analytics', selectedVendorId],
+    queryFn: () => selectedVendorId ? fetchVendorAnalytics(selectedVendorId) : Promise.resolve(null),
+    enabled: !!selectedVendorId,
+  });
+
+  const generateReport = (vendor: Vendor, data: VendorAnalytics | null): string => {
     const month = new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-    const views = Math.floor(Math.random() * 200) + 20; // would come from analytics_events in production
-    const waTaps = Math.floor(Math.random() * 50) + 5;
-    const topProduct = 'Toyota Camry Brake Pad Set';
+    const views = data?.views ?? 0;
+    const waTaps = data?.whatsappTaps ?? 0;
+    const topProduct = data?.topProduct;
+    const topSearches = data?.topSearches ?? [];
+    const restockTip = data?.restockTip;
 
-    return `📊 VOOM Monthly Report for ${vendor.businessName}
-Period: ${month}
+    const hasActivity = views > 0 || waTaps > 0;
 
-Your shop was viewed ${views} times
-Buyers tapped WhatsApp ${waTaps} times
-Your top product: ${topProduct} (${Math.floor(views * 0.4)} views)
+    let report = `📊 VOOM Monthly Report for ${vendor.businessName}\nPeriod: ${month}\n\n`;
 
-Top 5 searches in your categories:
-1. Toyota Camry brake pads — 45 searches
-2. Nissan engine mount — 32 searches
-3. Honda Civic headlight — 28 searches
-4. Hyundai Tucson radiator — 24 searches
-5. Mercedes C-Class oil filter — 19 searches
+    if (hasActivity) {
+      report += `Your shop was viewed ${views} time${views !== 1 ? 's' : ''}\n`;
+      report += `Buyers tapped WhatsApp ${waTaps} time${waTaps !== 1 ? 's' : ''}\n`;
+      if (topProduct) {
+        report += `Your top product: ${topProduct.name} (${topProduct.views} views)\n`;
+      }
+    } else {
+      report += `Your report is warming up! We need 7+ days of buyer data to show detailed analytics.\n`;
+      report += `Make sure your products are listed at voomparts.com/vendor\n`;
+    }
 
-💡 Restock tip: "BMW X3 suspension" was searched 15 times with no results. Stock this to capture demand.
+    if (topSearches.length > 0) {
+      report += `\nTop searches in your categories:\n`;
+      topSearches.forEach((s, i) => {
+        report += `${i + 1}. ${s.query} — ${s.count} searches\n`;
+      });
+    }
 
-${vendor.tier !== 'free' ? `Your ${vendor.tier} subscription is active.` : 'Your Pro trial ends in 7 days.\nKeep analytics + priority search → Upgrade: voomparts.com/vendor/upgrade'}
+    if (restockTip) {
+      report += `\n💡 Restock tip: "${restockTip.query}" was searched ${restockTip.count} time${restockTip.count !== 1 ? 's' : ''} with no results. Stock this to capture demand.\n`;
+    }
 
-— VOOM Parts | voomparts.com`;
+    report += `\n${vendor.tier !== 'free' ? `Your ${vendor.tier} subscription is active.` : 'Upgrade to Pro for full analytics + priority search → voomparts.com/vendor/upgrade'}`;
+    report += `\n\n— VOOM Parts | voomparts.com`;
+
+    return report;
   };
 
-  const report = selectedVendor ? generateReport(selectedVendor) : '';
+  const report = selectedVendor ? generateReport(selectedVendor, analytics ?? null) : '';
   const waLink = selectedVendor
     ? `https://wa.me/${selectedVendor.whatsapp || selectedVendor.phone}?text=${encodeURIComponent(report)}`
     : '';
@@ -145,14 +165,22 @@ ${vendor.tier !== 'free' ? `Your ${vendor.tier} subscription is active.` : 'Your
 function InvestorSnapshot({ stats, vendors, orders }: { stats: AdminStats | null; vendors: Vendor[]; orders: Order[] }) {
   const [highlights, setHighlights] = useState('');
   const [nextThirtyDays, setNextThirtyDays] = useState('');
+  const [cashUsd, setCashUsd] = useState('');
+  const [burnRate, setBurnRate] = useState('');
 
-  const approvedVendors = useMemo(() => vendors.filter(v => v.status === 'approved').length, [vendors]);
+  const { data: briefingData } = useQuery({ queryKey: ['briefing'], queryFn: fetchBriefing });
+
   const vendorsWithProducts = useMemo(() => vendors.filter(v => v.totalListings > 0).length, [vendors]);
   const totalGMV = useMemo(() => orders.reduce((s, o) => s + (parseFloat(o.totalAmount) || 0), 0), [orders]);
   const completedOrders = useMemo(() => orders.filter(o => o.status === 'delivered').length, [orders]);
+  const mrr = briefingData?.mrr ?? 0;
+  const runway = cashUsd && burnRate ? Math.round(parseFloat(cashUsd) / parseFloat(burnRate)) : null;
 
   const now = new Date();
   const month = now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+
+  const topSearches = briefingData?.topSearches ?? [];
+  const zeroResultSearches = briefingData?.zeroResultSearches ?? [];
 
   const generateSnapshot = (): string => {
     return `VOOM Ghana — Investor Update ${month}
@@ -161,21 +189,18 @@ KEY METRICS
 Vendors registered: ${stats?.totalVendors ?? 0}
 Vendors with products: ${vendorsWithProducts}
 Total SKUs: ${stats?.totalProducts ?? 0}
-Buyer searches (30d): estimated from analytics
-WhatsApp inquiries (30d): estimated from analytics
+Buyer searches (30d): ${briefingData?.todaySearches ?? 'tracking pending'}
+WhatsApp inquiries (30d): ${briefingData?.todayWhatsappTaps ?? 'tracking pending'}
 Completed transactions: ${completedOrders}
 GMV: GH₵ ${totalGMV.toLocaleString('en-GH', { minimumFractionDigits: 2 })}
-MRR: GH₵ 0 (pre-revenue)
-Cash: $[MANUAL] USD | Runway: [MANUAL] months
+MRR: GH₵ ${mrr.toLocaleString()}${mrr === 0 ? ' (pre-revenue)' : ''}
+Cash: $${cashUsd || '[ENTER ABOVE]'} USD | Runway: ${runway ? `${runway} months` : '[ENTER ABOVE]'}
 
 TOP DEMAND (what buyers search for)
-1. Toyota Camry parts — high demand
-2. Brake pads (all makes) — high demand
-3. Engine mounts — moderate demand
+${topSearches.length > 0 ? topSearches.slice(0, 3).map((s, i) => `${i + 1}. ${s.query} — ${s.count} searches`).join('\n') : '(Tracking pending — need marketplace tracker integration)'}
 
 SUPPLY GAPS (zero-result searches)
-1. BMW X3 suspension — searched, 0 vendors
-2. Kia Sportage transmission — searched, 0 vendors
+${zeroResultSearches.length > 0 ? zeroResultSearches.slice(0, 3).map((s, i) => `${i + 1}. "${s.query}" — ${s.count} searches, 0 vendors`).join('\n') : '(No zero-result searches detected yet)'}
 
 HIGHLIGHTS
 ${highlights || '[Add highlights before exporting]'}
@@ -199,6 +224,56 @@ Generated from VOOM CEO Dashboard · ${now.toLocaleDateString('en-GB')}`;
       <SectionTitle sub="One-click export for monthly investor emails">
         Investor Snapshot
       </SectionTitle>
+
+      {/* Cash & Runway inputs */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.75rem' }}>
+        <div>
+          <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '0.25rem' }}>
+            Cash in bank (USD)
+          </label>
+          <input
+            value={cashUsd}
+            onChange={e => setCashUsd(e.target.value)}
+            placeholder="e.g. 25000"
+            type="number"
+            style={{
+              width: '100%', padding: '0.5rem 0.75rem', borderRadius: '0.5rem',
+              border: '1px solid rgba(79,70,229,0.12)', fontSize: '0.8125rem',
+              boxSizing: 'border-box', outline: 'none',
+            }}
+          />
+        </div>
+        <div>
+          <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748B', display: 'block', marginBottom: '0.25rem' }}>
+            Monthly burn rate (USD)
+          </label>
+          <input
+            value={burnRate}
+            onChange={e => setBurnRate(e.target.value)}
+            placeholder="e.g. 3000"
+            type="number"
+            style={{
+              width: '100%', padding: '0.5rem 0.75rem', borderRadius: '0.5rem',
+              border: '1px solid rgba(79,70,229,0.12)', fontSize: '0.8125rem',
+              boxSizing: 'border-box', outline: 'none',
+            }}
+          />
+        </div>
+      </div>
+      {runway !== null && (
+        <div style={{
+          marginBottom: '0.75rem', padding: '0.5rem 0.75rem', borderRadius: '0.5rem',
+          background: runway > 6 ? 'rgba(5,150,105,0.06)' : runway > 3 ? 'rgba(217,119,6,0.06)' : 'rgba(225,29,72,0.06)',
+          border: `1px solid ${runway > 6 ? 'rgba(5,150,105,0.12)' : runway > 3 ? 'rgba(217,119,6,0.12)' : 'rgba(225,29,72,0.12)'}`,
+        }}>
+          <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: runway > 6 ? '#059669' : runway > 3 ? '#D97706' : '#E11D48' }}>
+            Runway: {runway} months
+          </span>
+          <span style={{ fontSize: '0.72rem', color: '#64748B', marginLeft: '0.5rem' }}>
+            (${cashUsd} / ${burnRate} per month)
+          </span>
+        </div>
+      )}
 
       {/* Editable fields */}
       <div style={{ marginBottom: '0.75rem' }}>
