@@ -7,11 +7,13 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   fetchAnalyticsUsers, fetchProductAnalytics, fetchVisitorAnalytics, fetchBehaviorFunnel,
+  fetchTrafficAnalytics,
   type AnalyticsUser, type ProductViewStat, type VisitorAnalyticsData, type BehaviorFunnelData,
+  type TrafficData,
 } from '../../lib/voomApi';
 import { UserAnalyticsDrawer } from '../UserAnalyticsDrawer';
 
-type Tab = 'users' | 'products';
+type Tab = 'users' | 'products' | 'traffic';
 type TimeRange = '1d' | '7d' | '30d' | 'all';
 
 const TIME_LABELS: Record<TimeRange, string> = { '1d': 'Today', '7d': '7 Days', '30d': '30 Days', all: 'All Time' };
@@ -80,6 +82,10 @@ function SectionTitle({ children, sub }: { children: React.ReactNode; sub?: stri
       {sub && <p style={{ margin: '0.125rem 0 0', fontSize: '0.75rem', color: '#94A3B8' }}>{sub}</p>}
     </div>
   );
+}
+
+function GlassSection({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return <div className="glass-card" style={{ padding: '1.125rem', ...style }}>{children}</div>;
 }
 
 function Skeleton({ h = 16, w }: { h?: number; w?: string }) {
@@ -602,6 +608,171 @@ function ProductsTab({ timeRange }: { timeRange: TimeRange }) {
   );
 }
 
+// ─── Traffic Tab ───
+
+const SOURCE_COLORS: Record<string, string> = {
+  direct: '#4F46E5', referral: '#7C3AED', 'Paid Social': '#E1306C',
+  'Organic Social': '#059669', 'Organic Search': '#D97706', facebook: '#1877F2',
+  google: '#4285F4', instagram: '#E1306C', tiktok: '#000000',
+};
+
+function TrafficTab() {
+  const { data: traffic, isLoading } = useQuery({
+    queryKey: ['analytics-traffic'],
+    queryFn: fetchTrafficAnalytics,
+    staleTime: 60_000,
+  });
+
+  if (isLoading) return <div style={{ textAlign: 'center', padding: '3rem', color: '#94A3B8' }}>Loading traffic data...</div>;
+  if (!traffic) return (
+    <GlassSection>
+      <SectionTitle sub="Add the VOOM tracker to voomparts.com to see traffic data here">No Traffic Data Yet</SectionTitle>
+      <div style={{ padding: '1.5rem', textAlign: 'center', color: '#94A3B8', fontSize: '0.8125rem' }}>
+        <p style={{ marginBottom: '0.5rem' }}>Traffic analytics require the VOOM tracker script on voomparts.com.</p>
+        <p>See <code style={{ background: 'rgba(79,70,229,0.06)', padding: '0.1rem 0.4rem', borderRadius: '0.25rem', fontSize: '0.75rem' }}>client/src/lib/voom-tracker.ts</code> for integration instructions.</p>
+      </div>
+    </GlassSection>
+  );
+
+  const { overview, trafficSources, countries, cities, topPages, devices } = traffic;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {/* Overview KPIs */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.5rem' }}>
+        {[
+          { label: 'Active Users', value: overview.activeUsers30d, color: '#4F46E5' },
+          { label: 'Sessions', value: overview.sessions30d, color: '#059669' },
+          { label: 'Page Views', value: overview.pageViews30d, color: '#7C3AED' },
+          { label: 'Total Events', value: overview.totalEvents30d, color: '#D97706' },
+        ].map(s => (
+          <GlassSection key={s.label} style={{ padding: '0.875rem', textAlign: 'center' }}>
+            <p style={{ fontSize: '1.5rem', fontWeight: 800, color: s.color, margin: 0, fontFamily: 'Space Grotesk' }}>{s.value.toLocaleString()}</p>
+            <p style={{ fontSize: '0.68rem', color: '#94A3B8', margin: '0.125rem 0 0', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>{s.label}</p>
+            <p style={{ fontSize: '0.62rem', color: '#CBD5E1', margin: '0.125rem 0 0' }}>Last 30 days</p>
+          </GlassSection>
+        ))}
+      </div>
+
+      <div className="two-col-grid">
+        {/* Traffic Sources */}
+        <GlassSection>
+          <SectionTitle sub="Where your visitors come from">Traffic Sources</SectionTitle>
+          {trafficSources.length === 0 ? (
+            <p style={{ color: '#94A3B8', fontSize: '0.8125rem', textAlign: 'center', padding: '1rem' }}>No source data yet</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+              {trafficSources.slice(0, 10).map(s => {
+                const total = trafficSources.reduce((sum, x) => sum + x.count, 0);
+                const pct = total > 0 ? (s.count / total) * 100 : 0;
+                return (
+                  <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{
+                      width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                      background: SOURCE_COLORS[s.name] || '#94A3B8',
+                    }} />
+                    <span style={{ flex: 1, fontSize: '0.8rem', color: '#0F172A', fontWeight: 500, textTransform: 'capitalize' }}>{s.name}</span>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0F172A', fontFamily: 'Space Grotesk' }}>{s.count}</span>
+                    <span style={{ fontSize: '0.68rem', color: '#94A3B8', width: 40, textAlign: 'right' }}>{pct.toFixed(1)}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </GlassSection>
+
+        {/* Geographic Breakdown */}
+        <GlassSection>
+          <SectionTitle sub="Top countries and cities">Geography</SectionTitle>
+          {countries.length === 0 && cities.length === 0 ? (
+            <p style={{ color: '#94A3B8', fontSize: '0.8125rem', textAlign: 'center', padding: '1rem' }}>No geo data yet</p>
+          ) : (
+            <>
+              {countries.length > 0 && (
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <p style={{ fontSize: '0.68rem', fontWeight: 700, color: '#94A3B8', marginBottom: '0.375rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Countries</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    {countries.slice(0, 8).map(c => (
+                      <div key={c.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0' }}>
+                        <span style={{ fontSize: '0.8rem', color: '#0F172A' }}>{c.name}</span>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4F46E5', fontFamily: 'Space Grotesk' }}>{c.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {cities.length > 0 && (
+                <div>
+                  <p style={{ fontSize: '0.68rem', fontWeight: 700, color: '#94A3B8', marginBottom: '0.375rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cities</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    {cities.slice(0, 8).map(c => (
+                      <div key={c.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0' }}>
+                        <span style={{ fontSize: '0.8rem', color: '#0F172A' }}>{c.name}</span>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4F46E5', fontFamily: 'Space Grotesk' }}>{c.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </GlassSection>
+      </div>
+
+      <div className="two-col-grid">
+        {/* Top Pages */}
+        <GlassSection>
+          <SectionTitle sub="Most viewed pages">Top Pages</SectionTitle>
+          {topPages.length === 0 ? (
+            <p style={{ color: '#94A3B8', fontSize: '0.8125rem', textAlign: 'center', padding: '1rem' }}>No page data yet</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              {topPages.slice(0, 10).map((p, i) => (
+                <div key={p.name} style={{
+                  display: 'flex', alignItems: 'center', gap: '0.5rem',
+                  padding: '0.375rem 0.5rem', borderRadius: '0.375rem',
+                  background: i % 2 === 0 ? 'rgba(248,250,252,0.6)' : 'transparent',
+                }}>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#94A3B8', width: '1.5rem', textAlign: 'center' }}>{i + 1}</span>
+                  <span style={{ flex: 1, fontSize: '0.78rem', color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4F46E5', fontFamily: 'Space Grotesk' }}>{p.count}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </GlassSection>
+
+        {/* Devices */}
+        <GlassSection>
+          <SectionTitle sub="How users access your site">Devices</SectionTitle>
+          {devices.length === 0 ? (
+            <p style={{ color: '#94A3B8', fontSize: '0.8125rem', textAlign: 'center', padding: '1rem' }}>No device data yet</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {devices.map(d => {
+                const total = devices.reduce((sum, x) => sum + x.count, 0);
+                const pct = total > 0 ? (d.count / total) * 100 : 0;
+                const icon = d.name === 'mobile' ? '📱' : d.name === 'tablet' ? '📟' : '💻';
+                return (
+                  <div key={d.name}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#0F172A', textTransform: 'capitalize' }}>{icon} {d.name}</span>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0F172A', fontFamily: 'Space Grotesk' }}>{d.count} ({pct.toFixed(0)}%)</span>
+                    </div>
+                    <div style={{ height: 6, borderRadius: 999, background: 'rgba(79,70,229,0.08)', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${pct}%`, borderRadius: 999, background: '#4F46E5', transition: 'width 0.5s ease' }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </GlassSection>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Analytics Component ───
 
 export function Analytics() {
@@ -617,7 +788,7 @@ export function Analytics() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
         {/* Tab switcher */}
         <div style={{ display: 'flex', background: 'rgba(79,70,229,0.07)', borderRadius: '0.875rem', padding: '0.25rem', gap: '0.125rem' }}>
-          {(['users', 'products'] as Tab[]).map(t => (
+          {(['users', 'products', 'traffic'] as Tab[]).map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
               padding: '0.5rem 1.25rem', borderRadius: '0.625rem', border: 'none', cursor: 'pointer',
               background: tab === t ? '#fff' : 'transparent',
@@ -626,7 +797,7 @@ export function Analytics() {
               boxShadow: tab === t ? '0 1px 6px rgba(79,70,229,0.15)' : 'none',
               transition: 'all 0.15s', fontFamily: 'Plus Jakarta Sans',
             }}>
-              {t === 'users' ? '👤 Users' : '📦 Products'}
+              {t === 'users' ? '👤 Users' : t === 'products' ? '📦 Products' : '🌐 Traffic'}
             </button>
           ))}
         </div>
@@ -651,10 +822,9 @@ export function Analytics() {
       </div>
 
       {/* Content */}
-      {tab === 'users'
-        ? <UsersTab onSelectUser={setSelectedUserId} />
-        : <ProductsTab timeRange={timeRange} />
-      }
+      {tab === 'users' && <UsersTab onSelectUser={setSelectedUserId} />}
+      {tab === 'products' && <ProductsTab timeRange={timeRange} />}
+      {tab === 'traffic' && <TrafficTab />}
     </div>
   );
 }

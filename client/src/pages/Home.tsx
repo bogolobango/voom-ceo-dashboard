@@ -265,11 +265,6 @@ export default function Home() {
           <Reports />
         </WidgetErrorBoundary>
       );
-      case 'settings': return (
-        <WidgetErrorBoundary fallbackTitle="Settings failed to load">
-          <Settings />
-        </WidgetErrorBoundary>
-      );
       default: return (
         <WidgetErrorBoundary fallbackTitle="Briefing failed to load">
           <MorningBriefing briefingData={briefingData} vendors={vendors} kpis={kpis} />
