@@ -560,7 +560,7 @@ router.get("/api/briefing", async (_req, res) => {
       supabase!.from("part_requests").select("*", { count: "exact", head: true }).gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
       supabase!.from("analytics_events").select("metadata").eq("eventType", "search").gte("createdAt", twentyFourHoursAgo),
       supabase!.from("vendors").select("id, businessName, tier, tierExpiresAt, tierTrialUsed").neq("tier", "free").gte("tierExpiresAt", nowISO).lte("tierExpiresAt", sevenDaysFromNow),
-      supabase!.from("vendors").select("tier, tierExpiresAt").neq("tier", "free"),
+      supabase!.from("vendors").select("userId, tier, tierExpiresAt, status").neq("tier", "free"),
       supabase!.from("users").select("*", { count: "exact", head: true }).gte("createdAt", todayStart),
       supabase!.from("users").select("*", { count: "exact", head: true }),
       supabase!.from("users").select("*", { count: "exact", head: true }).gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
@@ -599,9 +599,13 @@ router.get("/api/briefing", async (_req, res) => {
       tierTrialUsed: v.tierTrialUsed ?? false,
     }));
 
+    // MRR: only count vendors who are approved AND have a real userId (excludes test accounts)
+    // A vendor with userId=0 is a test/placeholder account
     let activePaidVendors = 0;
     let mrr = 0;
     for (const v of paidVendorsRaw || []) {
+      // Skip test accounts (userId 0 or not approved)
+      if (v.userId === 0 || (v.status && v.status !== "approved")) continue;
       if (!v.tierExpiresAt || v.tierExpiresAt > nowISO) {
         activePaidVendors++;
         mrr += TIER_PRICES[v.tier] || 0;
@@ -1839,11 +1843,12 @@ router.get("/api/analytics/unit-economics", async (_req, res) => {
     // Vendor lifecycle data
     const { data: allVendors } = await supabase!
       .from("vendors")
-      .select("id, status, tier, tierExpiresAt, totalSales, createdAt");
+      .select("id, userId, status, tier, tierExpiresAt, totalSales, createdAt");
 
-    const vendors = allVendors || [];
+    // Exclude test accounts (userId=0 is a placeholder for test/demo vendors)
+    const vendors = (allVendors || []).filter((v: any) => v.userId !== 0);
     const totalVendors = vendors.length;
-    const paidVendors = vendors.filter((v: any) => v.tier !== "free");
+    const paidVendors = vendors.filter((v: any) => v.tier !== "free" && v.status === "approved");
     const churned = vendors.filter((v: any) => v.status === "suspended" || v.status === "rejected");
 
     // Tier pricing

@@ -371,19 +371,19 @@ export function MorningBriefing({ briefingData, vendors, kpis }: MorningBriefing
             <div>
               <p style={{ fontSize: '0.68rem', color: '#94A3B8', margin: 0, textTransform: 'uppercase', letterSpacing: '0.04em' }}>MRR (GH₵)</p>
               <p style={{
-                fontSize: '1.375rem', fontWeight: 700, color: '#059669',
+                fontSize: '1.375rem', fontWeight: 700, color: mrr > 0 ? '#059669' : '#94A3B8',
                 fontFamily: 'Space Grotesk, monospace', margin: '0.125rem 0 0', lineHeight: 1,
               }}>
-                GH₵ {mrr.toLocaleString()}
+                {mrr > 0 ? `GH₵ ${mrr.toLocaleString()}` : 'Pre-revenue'}
               </p>
             </div>
             <div>
               <p style={{ fontSize: '0.68rem', color: '#94A3B8', margin: 0, textTransform: 'uppercase', letterSpacing: '0.04em' }}>MRR (USD)</p>
               <p style={{
-                fontSize: '1.375rem', fontWeight: 700, color: '#4F46E5',
+                fontSize: '1.375rem', fontWeight: 700, color: mrr > 0 ? '#4F46E5' : '#94A3B8',
                 fontFamily: 'Space Grotesk, monospace', margin: '0.125rem 0 0', lineHeight: 1,
               }}>
-                $ {Math.round(mrrUsd).toLocaleString()}
+                {mrr > 0 ? `$ ${Math.round(mrrUsd).toLocaleString()}` : '$0'}
               </p>
             </div>
           </div>
