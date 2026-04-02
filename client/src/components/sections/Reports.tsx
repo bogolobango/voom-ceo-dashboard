@@ -112,7 +112,13 @@ function VendorValueReport({ vendors }: { vendors: Vendor[] }) {
         ))}
       </select>
 
-      {selectedVendor && (
+      {selectedVendor && analyticsLoading && (
+        <div style={{ textAlign: 'center', padding: '2rem', color: '#94A3B8', fontSize: '0.8125rem' }}>
+          Loading analytics for {selectedVendor.businessName}...
+        </div>
+      )}
+
+      {selectedVendor && !analyticsLoading && (
         <>
           <div style={{
             background: '#DCF8C6', borderRadius: '0.75rem', padding: '1rem',

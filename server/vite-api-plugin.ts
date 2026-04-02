@@ -1040,6 +1040,93 @@ export default function viteApiPlugin(): Plugin {
             }});
           }
 
+          // ─── Supply-Demand Gaps ───
+          if (url === "/api/analytics/supply-demand") {
+            if (!sb) return json(res, { source: "offline", data: { gaps: [], topSearches: [], totalSearches: 0, zeroResultRate: 0 } });
+            const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+            const { data: searchEvents } = await sb.from("analytics_events").select("metadata").eq("eventType", "search").gte("createdAt", sevenDaysAgo);
+            const queryMap = new Map<string, { count: number; results: number }>();
+            for (const e of searchEvents || []) {
+              const meta = (e as any).metadata as Record<string, unknown> | null;
+              if (!meta?.query) continue;
+              const q = (meta.query as string).toLowerCase().trim();
+              if (q.length < 2) continue;
+              const existing = queryMap.get(q) || { count: 0, results: 0 };
+              existing.count++;
+              existing.results = Math.max(existing.results, (meta.resultCount ?? meta.results ?? 0) as number);
+              queryMap.set(q, existing);
+            }
+            const gaps = [...queryMap.entries()].filter(([, d]) => d.results === 0).sort((a, b) => b[1].count - a[1].count).slice(0, 30).map(([query, d]) => ({ query, searchCount: d.count, matchedVendors: [] }));
+            const topSearches = [...queryMap.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, 50).map(([query, d]) => ({ query, searchCount: d.count, resultCount: d.results }));
+            return json(res, { source: "database", data: { gaps, topSearches, totalSearches: searchEvents?.length ?? 0, zeroResultRate: queryMap.size > 0 ? Math.round(([...queryMap.values()].filter(d => d.results === 0).length / queryMap.size) * 100) : 0 } });
+          }
+
+          // ─── Unit Economics ───
+          if (url === "/api/analytics/unit-economics") {
+            if (!sb) return json(res, { source: "offline", data: null });
+            const { data: allVendors } = await sb.from("vendors").select("id, status, tier, tierExpiresAt, totalSales, createdAt");
+            const vendors = allVendors || [];
+            const TIER_PRICES: Record<string, number> = { free: 0, starter: 100, pro: 200, business: 800, enterprise: 2000 };
+            const paidVendors = vendors.filter((v: any) => v.tier !== "free");
+            const churned = vendors.filter((v: any) => v.status === "suspended" || v.status === "rejected");
+            const mrr = paidVendors.reduce((sum: number, v: any) => {
+              if (v.tierExpiresAt && new Date(v.tierExpiresAt) < new Date()) return sum;
+              return sum + (TIER_PRICES[v.tier] || 0);
+            }, 0);
+            const arpu = vendors.length > 0 ? mrr / vendors.length : 0;
+            const churnRate = vendors.length > 0 ? (churned.length / vendors.length) * 100 : 0;
+            const monthlyChurn = churnRate / 100;
+            const ltv = monthlyChurn > 0 ? arpu / monthlyChurn : arpu * 24;
+            const activeVendors = vendors.filter((v: any) => (v.totalSales || 0) > 0).length;
+            return json(res, { source: "database", data: {
+              mrr, arpu: Math.round(arpu), ltv: Math.round(ltv), cac: 0, ltvCacRatio: null,
+              churnRate: Math.round(churnRate * 10) / 10,
+              activationRate: vendors.length > 0 ? Math.round((activeVendors / vendors.length) * 1000) / 10 : 0,
+              conversionToPaid: vendors.length > 0 ? Math.round((paidVendors.length / vendors.length) * 1000) / 10 : 0,
+              totalVendors: vendors.length, paidVendors: paidVendors.length, churnedVendors: churned.length, activeVendors,
+            }});
+          }
+
+          // ─── Vendor Analytics (for reports) ───
+          const vendorAnalyticsMatch = url.match(/^\/api\/analytics\/vendor\/(\d+)$/);
+          if (vendorAnalyticsMatch) {
+            if (!sb) return json(res, { source: "offline", data: { views: 0, whatsappTaps: 0, searches: 0, topProduct: null, topSearches: [], restockTip: null } });
+            const vendorId = parseInt(vendorAnalyticsMatch[1], 10);
+            const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+            const { data: products } = await sb.from("products").select("id, name, vehicleMake").eq("vendorId", vendorId);
+            const productIds = (products || []).map((p: any) => p.id);
+            if (productIds.length === 0) return json(res, { source: "database", data: { views: 0, whatsappTaps: 0, searches: 0, topProduct: null, topSearches: [], restockTip: null } });
+            const { data: events } = await sb.from("analytics_events").select("eventType, productId").in("productId", productIds).gte("createdAt", thirtyDaysAgo);
+            const allEvents = events || [];
+            const views = allEvents.filter((e: any) => e.eventType === "product_view").length;
+            const waTaps = allEvents.filter((e: any) => e.eventType === "whatsapp_tap").length;
+            const viewsByProduct = new Map<number, number>();
+            allEvents.filter((e: any) => e.eventType === "product_view").forEach((e: any) => { viewsByProduct.set(e.productId, (viewsByProduct.get(e.productId) || 0) + 1); });
+            let topPid: number | null = null; let topPViews = 0;
+            viewsByProduct.forEach((c, pid) => { if (c > topPViews) { topPViews = c; topPid = pid; } });
+            const topProduct = topPid ? { name: products!.find((p: any) => p.id === topPid)?.name || "Unknown", views: topPViews } : null;
+            // Get search events for top searches
+            const { data: searchEvents } = await sb.from("analytics_events").select("metadata").eq("eventType", "search").gte("createdAt", thirtyDaysAgo);
+            const vendorKeywords = new Set<string>();
+            (products || []).forEach((p: any) => { if (p.vehicleMake) vendorKeywords.add(p.vehicleMake.toLowerCase()); if (p.name) p.name.toLowerCase().split(/\s+/).filter((w: string) => w.length > 3).forEach((w: string) => vendorKeywords.add(w)); });
+            const searchCounts = new Map<string, { count: number; results: number; relevant: boolean }>();
+            (searchEvents || []).forEach((e: any) => {
+              const meta = (e as any).metadata as Record<string, unknown> | null;
+              if (!meta?.query) return;
+              const q = meta.query as string;
+              const existing = searchCounts.get(q) || { count: 0, results: 0, relevant: false };
+              existing.count++; existing.results = (meta.resultCount as number) || existing.results;
+              if (!existing.relevant && vendorKeywords.size > 0) { existing.relevant = q.toLowerCase().split(/\s+/).some(w => [...vendorKeywords].some(vk => vk.includes(w) || w.includes(vk))); }
+              searchCounts.set(q, existing);
+            });
+            const relevant = [...searchCounts.entries()].filter(([, d]) => d.relevant);
+            const pool = relevant.length >= 3 ? relevant : [...searchCounts.entries()];
+            const topSearches = pool.sort((a, b) => b[1].count - a[1].count).slice(0, 5).map(([query, d]) => ({ query, count: d.count, results: d.results }));
+            const gapPool = [...searchCounts.entries()].filter(([, d]) => d.results === 0 && (d.relevant || vendorKeywords.size === 0)).sort((a, b) => b[1].count - a[1].count);
+            const restockTip = gapPool[0] ? { query: gapPool[0][0], count: gapPool[0][1].count } : null;
+            return json(res, { source: "database", data: { views, whatsappTaps: waTaps, searches: searchEvents?.length ?? 0, topProduct, topSearches, restockTip } });
+          }
+
           // ─── WhatsApp Acquisition Routes ───
 
           // POST /api/whatsapp/scrape

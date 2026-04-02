@@ -1949,39 +1949,65 @@ router.get("/api/analytics/vendor/:id", async (req, res) => {
       ? { name: products!.find((p: any) => p.id === topProductId)?.name || "Unknown", views: topProductViews }
       : null;
 
-    // Get vendor's categories for search matching
-    const { data: vendorProducts } = await supabase!
+    // Build keyword set from vendor's products (makes, models, product name words)
+    const { data: vendorFullProducts } = await supabase!
       .from("products")
-      .select("categoryId")
+      .select("name, vehicleMake, vehicleModel, categoryId")
       .eq("vendorId", vendorId);
-    const categoryIds = [...new Set((vendorProducts || []).map((p: any) => p.categoryId).filter(Boolean))];
 
-    // Top searches in vendor's categories (from all search events)
+    const vendorKeywords = new Set<string>();
+    (vendorFullProducts || []).forEach((p: any) => {
+      if (p.vehicleMake) vendorKeywords.add(p.vehicleMake.toLowerCase());
+      if (p.vehicleModel) vendorKeywords.add(p.vehicleModel.toLowerCase());
+      // Extract meaningful words from product names (>3 chars)
+      if (p.name) {
+        p.name.toLowerCase().split(/\s+/).forEach((w: string) => {
+          if (w.length > 3 && !['with', 'from', 'that', 'this', 'for'].includes(w)) {
+            vendorKeywords.add(w);
+          }
+        });
+      }
+    });
+
+    // Get all search events, then filter for relevance to this vendor
     const { data: searchEvents } = await supabase!
       .from("analytics_events")
       .select("metadata")
       .eq("eventType", "search")
       .gte("createdAt", thirtyDaysAgo);
 
-    const searchCounts = new Map<string, { count: number; results: number }>();
+    const searchCounts = new Map<string, { count: number; results: number; relevant: boolean }>();
     (searchEvents || []).forEach((e: any) => {
       const meta = e.metadata as Record<string, unknown> | null;
       if (!meta?.query) return;
       const q = meta.query as string;
-      const existing = searchCounts.get(q) || { count: 0, results: 0 };
+      const qLower = q.toLowerCase();
+      const existing = searchCounts.get(q) || { count: 0, results: 0, relevant: false };
       existing.count++;
       existing.results = (meta.resultCount as number) || existing.results;
+      // Check if this search is relevant to the vendor's specialization
+      if (!existing.relevant && vendorKeywords.size > 0) {
+        const queryWords = qLower.split(/\s+/);
+        existing.relevant = queryWords.some(w => [...vendorKeywords].some(vk => vk.includes(w) || w.includes(vk)));
+      }
       searchCounts.set(q, existing);
     });
 
-    const topSearches = [...searchCounts.entries()]
+    // Prefer relevant searches; fall back to all searches if vendor has no products
+    const relevantSearches = [...searchCounts.entries()].filter(([, d]) => d.relevant);
+    const searchPool = relevantSearches.length >= 3 ? relevantSearches : [...searchCounts.entries()];
+
+    const topSearches = searchPool
       .sort((a, b) => b[1].count - a[1].count)
       .slice(0, 5)
       .map(([query, data]) => ({ query, count: data.count, results: data.results }));
 
-    // Restock tip: highest-volume zero-result search
-    const restockTip = [...searchCounts.entries()]
-      .filter(([, data]) => data.results === 0)
+    // Restock tip: highest-volume zero-result search relevant to this vendor
+    const relevantGaps = [...searchCounts.entries()]
+      .filter(([, d]) => d.results === 0 && (d.relevant || vendorKeywords.size === 0))
+      .sort((a, b) => b[1].count - a[1].count);
+    const restockTip = relevantGaps[0] || [...searchCounts.entries()]
+      .filter(([, d]) => d.results === 0)
       .sort((a, b) => b[1].count - a[1].count)[0];
 
     res.json({

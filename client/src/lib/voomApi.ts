@@ -502,22 +502,45 @@ export function computeKPIs(
   };
 }
 
-/** Compute month-over-month growth % from monthly count data */
+/**
+ * Compute month-over-month growth % from monthly count data.
+ * Compares the last two COMPLETE months (skips the current partial month).
+ * e.g. if today is April 2, compares March vs February, not April vs March.
+ */
 function computeMoMGrowth(data?: { month: string; count: number }[]): number {
   if (!data || data.length < 2) return 0;
   const sorted = [...data].sort((a, b) => a.month.localeCompare(b.month));
-  const current = sorted[sorted.length - 1].count;
-  const previous = sorted[sorted.length - 2].count;
+  const currentMonth = new Date().toISOString().slice(0, 7); // "2026-04"
+
+  // Filter out the current (incomplete) month
+  const complete = sorted.filter(d => d.month < currentMonth);
+  if (complete.length < 2) {
+    // Fall back to raw comparison if not enough complete months
+    const last = sorted[sorted.length - 1].count;
+    const prev = sorted[sorted.length - 2].count;
+    if (prev === 0) return last > 0 ? 100 : 0;
+    return ((last - prev) / prev) * 100;
+  }
+  const current = complete[complete.length - 1].count;
+  const previous = complete[complete.length - 2].count;
   if (previous === 0) return current > 0 ? 100 : 0;
   return ((current - previous) / previous) * 100;
 }
 
-/** Compute MoM revenue growth from order growth data */
+/** Same as above but for revenue field in order growth data */
 function computeRevenueMoMGrowth(data?: { month: string; count: number; revenue: number }[]): number {
   if (!data || data.length < 2) return 0;
   const sorted = [...data].sort((a, b) => a.month.localeCompare(b.month));
-  const current = sorted[sorted.length - 1].revenue;
-  const previous = sorted[sorted.length - 2].revenue;
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const complete = sorted.filter(d => d.month < currentMonth);
+  if (complete.length < 2) {
+    const last = sorted[sorted.length - 1].revenue;
+    const prev = sorted[sorted.length - 2].revenue;
+    if (prev === 0) return last > 0 ? 100 : 0;
+    return ((last - prev) / prev) * 100;
+  }
+  const current = complete[complete.length - 1].revenue;
+  const previous = complete[complete.length - 2].revenue;
   if (previous === 0) return current > 0 ? 100 : 0;
   return ((current - previous) / previous) * 100;
 }
