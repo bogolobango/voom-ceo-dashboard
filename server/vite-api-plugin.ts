@@ -979,6 +979,67 @@ export default function viteApiPlugin(): Plugin {
             return json(res, data, 201);
           }
 
+          // ─── Public Tracking Endpoint ───
+          if (url === "/api/track" && req.method === "POST") {
+            res.setHeader("Access-Control-Allow-Origin", "*");
+            const body = await parseBody(req);
+            if (!sb) return json(res, { tracked: 0 });
+            const events = Array.isArray(body) ? body : [body];
+            const validTypes = ["page_view", "session_start", "product_view", "whatsapp_tap", "wishlist_add", "cart_add", "search", "order_created"];
+            const rows = events.filter((e: any) => e.eventType && validTypes.includes(e.eventType)).map((e: any) => ({
+              eventType: e.eventType, productId: e.productId || null, vendorId: e.vendorId || null,
+              userId: e.userId || null, visitorId: e.visitorId || null,
+              metadata: {
+                ...(e.metadata || {}),
+                ...(e.referrer ? { referrer: e.referrer } : {}),
+                ...(e.utmSource ? { utmSource: e.utmSource } : {}),
+                ...(e.utmMedium ? { utmMedium: e.utmMedium } : {}),
+                ...(e.utmCampaign ? { utmCampaign: e.utmCampaign } : {}),
+                ...(e.country ? { country: e.country } : {}),
+                ...(e.city ? { city: e.city } : {}),
+                ...(e.deviceType ? { deviceType: e.deviceType } : {}),
+                ...(e.browser ? { browser: e.browser } : {}),
+                ...(e.pageUrl ? { pageUrl: e.pageUrl } : {}),
+                ...(e.pageTitle ? { pageTitle: e.pageTitle } : {}),
+                ...(e.sessionId ? { sessionId: e.sessionId } : {}),
+              },
+            }));
+            if (rows.length > 0) await sb.from("analytics_events").insert(rows);
+            return json(res, { tracked: rows.length });
+          }
+
+          // ─── Analytics Traffic ───
+          if (url === "/api/analytics/traffic") {
+            if (!sb) return json(res, { source: "offline", data: {} });
+            const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+            const { data: allEvents } = await sb.from("analytics_events").select("eventType, visitorId, metadata").gte("createdAt", thirtyDaysAgo);
+            const events = allEvents || [];
+            const visitorIds = new Set(events.filter((e: any) => e.visitorId).map((e: any) => e.visitorId));
+            const sessions = events.filter((e: any) => e.eventType === "session_start").length;
+            const pageViews = events.filter((e: any) => e.eventType === "page_view").length;
+            const sourceMap = new Map<string, number>();
+            const countryMap = new Map<string, number>();
+            const cityMap = new Map<string, number>();
+            const pageMap = new Map<string, number>();
+            const deviceMap = new Map<string, number>();
+            for (const e of events) {
+              const meta = (e as any).metadata as Record<string, unknown> | null;
+              if (!meta) continue;
+              const source = (meta.utmSource as string) || (meta.referrer ? "referral" : "direct");
+              sourceMap.set(source, (sourceMap.get(source) || 0) + 1);
+              const country = meta.country as string; if (country) countryMap.set(country, (countryMap.get(country) || 0) + 1);
+              const city = meta.city as string; if (city) cityMap.set(city, (cityMap.get(city) || 0) + 1);
+              const pageTitle = (meta.pageTitle || meta.pageUrl || "") as string; if (pageTitle) pageMap.set(pageTitle, (pageMap.get(pageTitle) || 0) + 1);
+              const deviceType = meta.deviceType as string; if (deviceType) deviceMap.set(deviceType, (deviceMap.get(deviceType) || 0) + 1);
+            }
+            const sorted = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
+            return json(res, { source: "database", data: {
+              overview: { activeUsers30d: visitorIds.size, sessions30d: sessions, pageViews30d: pageViews, totalEvents30d: events.length },
+              trafficSources: sorted(sourceMap), countries: sorted(countryMap), cities: sorted(cityMap),
+              topPages: sorted(pageMap).slice(0, 20), devices: sorted(deviceMap),
+            }});
+          }
+
           // ─── WhatsApp Acquisition Routes ───
 
           // POST /api/whatsapp/scrape

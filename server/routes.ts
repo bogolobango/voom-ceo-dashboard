@@ -1733,6 +1733,158 @@ router.post("/api/vendors/invite", async (req, res) => {
   }
 });
 
+// ─── Public Tracking Endpoint (called by voomparts.com marketplace) ──────────
+
+router.post("/api/track", async (req, res) => {
+  // CORS: allow marketplace origin
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") return res.sendStatus(200);
+
+  if (!supabase) return res.status(503).json({ error: "offline" });
+
+  try {
+    const events = Array.isArray(req.body) ? req.body : [req.body];
+    const validTypes = [
+      "page_view", "session_start", "product_view", "whatsapp_tap",
+      "wishlist_add", "cart_add", "search", "order_created",
+    ];
+
+    const rows = events
+      .filter((e: any) => e.eventType && validTypes.includes(e.eventType))
+      .map((e: any) => ({
+        eventType: e.eventType,
+        productId: e.productId || null,
+        vendorId: e.vendorId || null,
+        userId: e.userId || null,
+        visitorId: e.visitorId || null,
+        metadata: {
+          ...(e.metadata || {}),
+          // Traffic source
+          ...(e.referrer ? { referrer: e.referrer } : {}),
+          ...(e.utmSource ? { utmSource: e.utmSource } : {}),
+          ...(e.utmMedium ? { utmMedium: e.utmMedium } : {}),
+          ...(e.utmCampaign ? { utmCampaign: e.utmCampaign } : {}),
+          // Geo & device
+          ...(e.country ? { country: e.country } : {}),
+          ...(e.city ? { city: e.city } : {}),
+          ...(e.deviceType ? { deviceType: e.deviceType } : {}),
+          ...(e.browser ? { browser: e.browser } : {}),
+          ...(e.os ? { os: e.os } : {}),
+          ...(e.screenWidth ? { screenWidth: e.screenWidth } : {}),
+          // Page info
+          ...(e.pageUrl ? { pageUrl: e.pageUrl } : {}),
+          ...(e.pageTitle ? { pageTitle: e.pageTitle } : {}),
+          // Session
+          ...(e.sessionId ? { sessionId: e.sessionId } : {}),
+        },
+      }));
+
+    if (rows.length > 0) {
+      await supabase.from("analytics_events").insert(rows);
+    }
+
+    res.json({ tracked: rows.length });
+  } catch (error) {
+    safeLogError("Track endpoint error", error);
+    res.status(500).json({ error: "Failed to track" });
+  }
+});
+
+// ─── Enhanced Analytics Queries ──────────────────────────────────────────────
+
+// GET /api/analytics/traffic — traffic overview with sources, geo, pages
+router.get("/api/analytics/traffic", async (_req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+    const oneDayAgo = new Date(Date.now() - 86400000).toISOString();
+
+    // Total events by type (30d)
+    const { data: allEvents30d } = await supabase!
+      .from("analytics_events")
+      .select("eventType, visitorId, metadata")
+      .gte("createdAt", thirtyDaysAgo);
+
+    const events = allEvents30d || [];
+
+    // Unique visitors (by visitorId)
+    const visitorIds30d = new Set(events.filter(e => e.visitorId).map(e => e.visitorId));
+    const sessions30d = events.filter(e => e.eventType === "session_start").length;
+    const pageViews30d = events.filter(e => e.eventType === "page_view").length;
+
+    // 7d and 1d subsets
+    const events7d = events.filter(e => {
+      const meta = e.metadata as Record<string, unknown> | null;
+      return true; // all events are within 30d already; we'd need createdAt for proper 7d filtering
+    });
+
+    // Traffic sources from metadata
+    const sourceMap = new Map<string, number>();
+    const countryMap = new Map<string, number>();
+    const cityMap = new Map<string, number>();
+    const pageMap = new Map<string, number>();
+    const deviceMap = new Map<string, number>();
+    const browserMap = new Map<string, number>();
+
+    for (const e of events) {
+      const meta = e.metadata as Record<string, unknown> | null;
+      if (!meta) continue;
+
+      // Traffic source
+      const source = (meta.utmSource as string) || (meta.referrer ? 'referral' : 'direct');
+      sourceMap.set(source, (sourceMap.get(source) || 0) + 1);
+
+      // Geo
+      const country = meta.country as string;
+      if (country) countryMap.set(country, (countryMap.get(country) || 0) + 1);
+      const city = meta.city as string;
+      if (city) cityMap.set(city, (cityMap.get(city) || 0) + 1);
+
+      // Pages
+      const pageUrl = meta.pageUrl as string;
+      const pageTitle = meta.pageTitle as string;
+      if (pageUrl || pageTitle) {
+        const key = pageTitle || pageUrl || 'unknown';
+        pageMap.set(key, (pageMap.get(key) || 0) + 1);
+      }
+
+      // Device
+      const deviceType = meta.deviceType as string;
+      if (deviceType) deviceMap.set(deviceType, (deviceMap.get(deviceType) || 0) + 1);
+      const browser = meta.browser as string;
+      if (browser) browserMap.set(browser, (browserMap.get(browser) || 0) + 1);
+    }
+
+    const sortedEntries = (map: Map<string, number>) =>
+      [...map.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
+
+    res.json({
+      source: "database",
+      data: {
+        overview: {
+          activeUsers30d: visitorIds30d.size,
+          sessions30d,
+          pageViews30d,
+          totalEvents30d: events.length,
+          engagementRate: sessions30d > 0 ? Math.round((events.filter(e => e.eventType !== "session_start" && e.eventType !== "page_view").length / sessions30d) * 100) : 0,
+        },
+        trafficSources: sortedEntries(sourceMap),
+        countries: sortedEntries(countryMap),
+        cities: sortedEntries(cityMap),
+        topPages: sortedEntries(pageMap).slice(0, 20),
+        devices: sortedEntries(deviceMap),
+        browsers: sortedEntries(browserMap),
+      },
+    });
+  } catch (error) {
+    safeLogError("Analytics traffic query error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
 // ─── WhatsApp Acquisition Routes ─────────────────────────────────────────────
 
 const DEFAULT_WA_TEMPLATES = [

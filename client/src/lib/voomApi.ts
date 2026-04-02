@@ -928,3 +928,35 @@ export async function updateWaLeadType(id: number, type: WaLeadType, status?: Wa
   if (!res.ok) throw new Error('Update failed');
   return res.json();
 }
+
+// ─── Traffic Analytics ───────────────────────────────────────
+
+export interface TrafficOverview {
+  activeUsers30d: number;
+  sessions30d: number;
+  pageViews30d: number;
+  totalEvents30d: number;
+  engagementRate?: number;
+}
+
+export interface NameCount {
+  name: string;
+  count: number;
+}
+
+export interface TrafficData {
+  overview: TrafficOverview;
+  trafficSources: NameCount[];
+  countries: NameCount[];
+  cities: NameCount[];
+  topPages: NameCount[];
+  devices: NameCount[];
+  browsers?: NameCount[];
+}
+
+export async function fetchTrafficAnalytics(): Promise<TrafficData | null> {
+  const res = await fetch('/api/analytics/traffic');
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json?.data ?? null;
+}

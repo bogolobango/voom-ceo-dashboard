@@ -19,6 +19,7 @@ export const vendorTierEnum = pgEnum("vendor_tier", ["free", "starter", "pro", "
 export const partRequestStatusEnum = pgEnum("part_request_status", ["open", "fulfilled", "closed"]);
 export const analyticsEventTypeEnum = pgEnum("analytics_event_type", [
   "product_view", "whatsapp_tap", "wishlist_add", "cart_add", "search", "order_created",
+  "page_view", "session_start",
 ]);
 
 // ── Users ──────────────────────────────────────────────────
