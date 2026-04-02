@@ -1733,6 +1733,300 @@ router.post("/api/vendors/invite", async (req, res) => {
   }
 });
 
+// ─── Supply-Demand Gap Matrix ────────────────────────────────────────────────
+
+router.get("/api/analytics/supply-demand", async (_req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+
+    // Get zero-result and low-result searches (last 7 days)
+    const { data: searchEvents } = await supabase!
+      .from("analytics_events")
+      .select("metadata")
+      .eq("eventType", "search")
+      .gte("createdAt", sevenDaysAgo);
+
+    const queryMap = new Map<string, { count: number; results: number }>();
+    for (const e of searchEvents || []) {
+      const meta = e.metadata as Record<string, unknown> | null;
+      if (!meta?.query) continue;
+      const q = (meta.query as string).toLowerCase().trim();
+      if (q.length < 2) continue;
+      const existing = queryMap.get(q) || { count: 0, results: 0 };
+      existing.count++;
+      const rc = (meta.resultCount ?? meta.results ?? 0) as number;
+      existing.results = Math.max(existing.results, rc);
+      queryMap.set(q, existing);
+    }
+
+    // Zero-result searches sorted by volume
+    const gaps = [...queryMap.entries()]
+      .filter(([, d]) => d.results === 0)
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 30)
+      .map(([query, d]) => ({ query, searchCount: d.count }));
+
+    // Get vendors in pipeline with their specializations
+    const { data: allVendors } = await supabase!
+      .from("vendors")
+      .select("id, businessName, phone, whatsapp, city, status");
+
+    const vendorList = allVendors || [];
+
+    // Get products to understand which makes/categories each vendor covers
+    const { data: allProducts } = await supabase!
+      .from("products")
+      .select("vendorId, name, vehicleMake, vehicleModel, categoryId");
+
+    // Build vendor specialization index
+    const vendorSpecs = new Map<number, Set<string>>();
+    for (const p of allProducts || []) {
+      const pid = (p as any).vendorId;
+      if (!vendorSpecs.has(pid)) vendorSpecs.set(pid, new Set());
+      const specs = vendorSpecs.get(pid)!;
+      if ((p as any).vehicleMake) specs.add(((p as any).vehicleMake as string).toLowerCase());
+      if ((p as any).vehicleModel) specs.add(((p as any).vehicleModel as string).toLowerCase());
+      if ((p as any).name) {
+        const words = ((p as any).name as string).toLowerCase().split(/\s+/);
+        words.forEach(w => { if (w.length > 3) specs.add(w); });
+      }
+    }
+
+    // Match gaps to vendors
+    const gapsWithMatches = gaps.map(gap => {
+      const queryWords = gap.query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+      const matches = vendorList
+        .map((v: any) => {
+          const specs = vendorSpecs.get(v.id);
+          if (!specs) return null;
+          const matchScore = queryWords.filter(w => [...specs].some(s => s.includes(w) || w.includes(s))).length;
+          if (matchScore === 0) return null;
+          return { vendorId: v.id, businessName: v.businessName, phone: v.phone, whatsapp: v.whatsapp, city: v.city, status: v.status, matchScore };
+        })
+        .filter(Boolean)
+        .sort((a: any, b: any) => b.matchScore - a.matchScore)
+        .slice(0, 3);
+      return { ...gap, matchedVendors: matches };
+    });
+
+    // All searches summary
+    const allSearches = [...queryMap.entries()]
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 50)
+      .map(([query, d]) => ({ query, searchCount: d.count, resultCount: d.results }));
+
+    res.json({
+      source: "database",
+      data: {
+        gaps: gapsWithMatches,
+        topSearches: allSearches,
+        totalSearches: searchEvents?.length ?? 0,
+        zeroResultRate: queryMap.size > 0 ? Math.round(([...queryMap.values()].filter(d => d.results === 0).length / queryMap.size) * 100) : 0,
+      },
+    });
+  } catch (error) {
+    safeLogError("Supply-demand gap query error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+// ─── Unit Economics ──────────────────────────────────────────────────────────
+
+router.get("/api/analytics/unit-economics", async (_req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    // Vendor lifecycle data
+    const { data: allVendors } = await supabase!
+      .from("vendors")
+      .select("id, status, tier, tierExpiresAt, totalSales, createdAt");
+
+    const vendors = allVendors || [];
+    const totalVendors = vendors.length;
+    const paidVendors = vendors.filter((v: any) => v.tier !== "free");
+    const churned = vendors.filter((v: any) => v.status === "suspended" || v.status === "rejected");
+
+    // Tier pricing
+    const TIER_PRICES: Record<string, number> = { free: 0, starter: 100, pro: 200, business: 800, enterprise: 2000 };
+    const mrr = paidVendors.reduce((sum: number, v: any) => {
+      if (v.tierExpiresAt && new Date(v.tierExpiresAt) < new Date()) return sum;
+      return sum + (TIER_PRICES[v.tier] || 0);
+    }, 0);
+
+    // Average revenue per vendor (ARPU)
+    const arpu = totalVendors > 0 ? mrr / totalVendors : 0;
+
+    // Churn rate (monthly approximation)
+    const churnRate = totalVendors > 0 ? (churned.length / totalVendors) * 100 : 0;
+
+    // LTV = ARPU / churn rate (monthly)
+    const monthlyChurnRate = churnRate / 100;
+    const ltv = monthlyChurnRate > 0 ? arpu / monthlyChurnRate : arpu * 24; // assume 24 month lifetime if no churn
+
+    // CAC — approximate from pipeline (vendors contacted vs registered)
+    const registered = vendors.filter((v: any) => v.status === "approved" || v.status === "pending").length;
+    // Rough CAC: assume $0 cash spend (founder time only), so CAC ≈ 0 for now
+    const cac = 0;
+
+    // Vendor activation metrics
+    const activeVendors = vendors.filter((v: any) => (v.totalSales || 0) > 0).length;
+    const activationRate = totalVendors > 0 ? (activeVendors / totalVendors) * 100 : 0;
+
+    // Time to first sale (average days from createdAt to first order)
+    // This would need order data joined — approximate for now
+    const conversionToPaid = totalVendors > 0 ? (paidVendors.length / totalVendors) * 100 : 0;
+
+    res.json({
+      source: "database",
+      data: {
+        mrr,
+        arpu: Math.round(arpu),
+        ltv: Math.round(ltv),
+        cac,
+        ltvCacRatio: cac > 0 ? Math.round(ltv / cac) : null,
+        churnRate: Math.round(churnRate * 10) / 10,
+        activationRate: Math.round(activationRate * 10) / 10,
+        conversionToPaid: Math.round(conversionToPaid * 10) / 10,
+        totalVendors,
+        paidVendors: paidVendors.length,
+        churnedVendors: churned.length,
+        activeVendors,
+      },
+    });
+  } catch (error) {
+    safeLogError("Unit economics query error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
+// ─── Vendor Analytics (for value reports) ────────────────────────────────────
+
+router.get("/api/analytics/vendor/:id", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const vendorId = parseInt(req.params.id, 10);
+    if (isNaN(vendorId)) return res.status(400).json({ error: "Invalid vendor ID" });
+
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+
+    // Get all products for this vendor
+    const { data: products } = await supabase!
+      .from("products")
+      .select("id, name")
+      .eq("vendorId", vendorId);
+
+    const productIds = (products || []).map((p: any) => p.id);
+
+    if (productIds.length === 0) {
+      return res.json({
+        source: "database",
+        data: { views: 0, whatsappTaps: 0, searches: 0, topProduct: null, topSearches: [], restockTip: null },
+      });
+    }
+
+    // Get events for vendor's products in last 30 days
+    const { data: events } = await supabase!
+      .from("analytics_events")
+      .select("eventType, productId, metadata")
+      .in("productId", productIds)
+      .gte("createdAt", thirtyDaysAgo);
+
+    const allEvents = events || [];
+    const views = allEvents.filter((e: any) => e.eventType === "product_view").length;
+    const waTaps = allEvents.filter((e: any) => e.eventType === "whatsapp_tap").length;
+
+    // Top product by views
+    const viewsByProduct = new Map<number, number>();
+    allEvents.filter((e: any) => e.eventType === "product_view").forEach((e: any) => {
+      viewsByProduct.set(e.productId, (viewsByProduct.get(e.productId) || 0) + 1);
+    });
+    let topProductId: number | null = null;
+    let topProductViews = 0;
+    viewsByProduct.forEach((count, pid) => {
+      if (count > topProductViews) { topProductViews = count; topProductId = pid; }
+    });
+    const topProduct = topProductId
+      ? { name: products!.find((p: any) => p.id === topProductId)?.name || "Unknown", views: topProductViews }
+      : null;
+
+    // Build keyword set from vendor's products (makes, models, product name words)
+    const { data: vendorFullProducts } = await supabase!
+      .from("products")
+      .select("name, vehicleMake, vehicleModel, categoryId")
+      .eq("vendorId", vendorId);
+
+    const vendorKeywords = new Set<string>();
+    (vendorFullProducts || []).forEach((p: any) => {
+      if (p.vehicleMake) vendorKeywords.add(p.vehicleMake.toLowerCase());
+      if (p.vehicleModel) vendorKeywords.add(p.vehicleModel.toLowerCase());
+      // Extract meaningful words from product names (>3 chars)
+      if (p.name) {
+        p.name.toLowerCase().split(/\s+/).forEach((w: string) => {
+          if (w.length > 3 && !['with', 'from', 'that', 'this', 'for'].includes(w)) {
+            vendorKeywords.add(w);
+          }
+        });
+      }
+    });
+
+    // Get all search events, then filter for relevance to this vendor
+    const { data: searchEvents } = await supabase!
+      .from("analytics_events")
+      .select("metadata")
+      .eq("eventType", "search")
+      .gte("createdAt", thirtyDaysAgo);
+
+    const searchCounts = new Map<string, { count: number; results: number; relevant: boolean }>();
+    (searchEvents || []).forEach((e: any) => {
+      const meta = e.metadata as Record<string, unknown> | null;
+      if (!meta?.query) return;
+      const q = meta.query as string;
+      const qLower = q.toLowerCase();
+      const existing = searchCounts.get(q) || { count: 0, results: 0, relevant: false };
+      existing.count++;
+      existing.results = (meta.resultCount as number) || existing.results;
+      // Check if this search is relevant to the vendor's specialization
+      if (!existing.relevant && vendorKeywords.size > 0) {
+        const queryWords = qLower.split(/\s+/);
+        existing.relevant = queryWords.some(w => [...vendorKeywords].some(vk => vk.includes(w) || w.includes(vk)));
+      }
+      searchCounts.set(q, existing);
+    });
+
+    // Prefer relevant searches; fall back to all searches if vendor has no products
+    const relevantSearches = [...searchCounts.entries()].filter(([, d]) => d.relevant);
+    const searchPool = relevantSearches.length >= 3 ? relevantSearches : [...searchCounts.entries()];
+
+    const topSearches = searchPool
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 5)
+      .map(([query, data]) => ({ query, count: data.count, results: data.results }));
+
+    // Restock tip: highest-volume zero-result search relevant to this vendor
+    const relevantGaps = [...searchCounts.entries()]
+      .filter(([, d]) => d.results === 0 && (d.relevant || vendorKeywords.size === 0))
+      .sort((a, b) => b[1].count - a[1].count);
+    const restockTip = relevantGaps[0] || [...searchCounts.entries()]
+      .filter(([, d]) => d.results === 0)
+      .sort((a, b) => b[1].count - a[1].count)[0];
+
+    res.json({
+      source: "database",
+      data: {
+        views,
+        whatsappTaps: waTaps,
+        searches: searchEvents?.length ?? 0,
+        topProduct,
+        topSearches,
+        restockTip: restockTip ? { query: restockTip[0], count: restockTip[1].count } : null,
+      },
+    });
+  } catch (error) {
+    safeLogError("Vendor analytics query error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
 // ─── Public Tracking Endpoint (called by voomparts.com marketplace) ──────────
 
 router.post("/api/track", async (req, res) => {

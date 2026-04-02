@@ -111,8 +111,8 @@ export default function Home() {
 
   const kpis = useMemo(() => {
     if (!statsQuery.data && vendors.length === 0 && orders.length === 0) return null;
-    return computeKPIs(statsQuery.data ?? null, vendors, orders, partRequests);
-  }, [statsQuery.data, vendors, orders, partRequests]);
+    return computeKPIs(statsQuery.data ?? null, vendors, orders, partRequests, growthData);
+  }, [statsQuery.data, vendors, orders, partRequests, growthData]);
 
   // ── Connection status ──
   const dataSource: DataSource = getDataSource();

@@ -463,6 +463,7 @@ export function computeKPIs(
   vendors: Vendor[],
   orders: Order[],
   partRequests: PartRequest[],
+  growthData?: GrowthData | null,
 ): DashboardKPIs {
   const approved = vendors.filter(v => v.status === 'approved').length;
   const pending = vendors.filter(v => v.status === 'pending').length;
@@ -495,10 +496,53 @@ export function computeKPIs(
     openPartRequests: openPR,
     fulfilledPartRequests: fulfilledPR,
     totalUsers: stats?.totalUsers ?? 0,
-    vendorGrowth: 0,
-    orderGrowth: 0,
-    gmvGrowth: 0,
+    vendorGrowth: computeMoMGrowth(growthData?.vendorGrowth),
+    orderGrowth: computeMoMGrowth(growthData?.orderGrowth),
+    gmvGrowth: computeRevenueMoMGrowth(growthData?.orderGrowth),
   };
+}
+
+/**
+ * Compute month-over-month growth % from monthly count data.
+ * Compares the last two COMPLETE months (skips the current partial month).
+ * e.g. if today is April 2, compares March vs February, not April vs March.
+ */
+function computeMoMGrowth(data?: { month: string; count: number }[]): number {
+  if (!data || data.length < 2) return 0;
+  const sorted = [...data].sort((a, b) => a.month.localeCompare(b.month));
+  const currentMonth = new Date().toISOString().slice(0, 7); // "2026-04"
+
+  // Filter out the current (incomplete) month
+  const complete = sorted.filter(d => d.month < currentMonth);
+  if (complete.length < 2) {
+    // Fall back to raw comparison if not enough complete months
+    const last = sorted[sorted.length - 1].count;
+    const prev = sorted[sorted.length - 2].count;
+    if (prev === 0) return last > 0 ? 100 : 0;
+    return ((last - prev) / prev) * 100;
+  }
+  const current = complete[complete.length - 1].count;
+  const previous = complete[complete.length - 2].count;
+  if (previous === 0) return current > 0 ? 100 : 0;
+  return ((current - previous) / previous) * 100;
+}
+
+/** Same as above but for revenue field in order growth data */
+function computeRevenueMoMGrowth(data?: { month: string; count: number; revenue: number }[]): number {
+  if (!data || data.length < 2) return 0;
+  const sorted = [...data].sort((a, b) => a.month.localeCompare(b.month));
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const complete = sorted.filter(d => d.month < currentMonth);
+  if (complete.length < 2) {
+    const last = sorted[sorted.length - 1].revenue;
+    const prev = sorted[sorted.length - 2].revenue;
+    if (prev === 0) return last > 0 ? 100 : 0;
+    return ((last - prev) / prev) * 100;
+  }
+  const current = complete[complete.length - 1].revenue;
+  const previous = complete[complete.length - 2].revenue;
+  if (previous === 0) return current > 0 ? 100 : 0;
+  return ((current - previous) / previous) * 100;
 }
 
 // ─── Revenue Chart Data ───
@@ -956,6 +1000,70 @@ export interface TrafficData {
 
 export async function fetchTrafficAnalytics(): Promise<TrafficData | null> {
   const res = await fetch('/api/analytics/traffic');
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json?.data ?? null;
+}
+
+// ─── Vendor Analytics (for value reports) ────────────────────
+
+export interface VendorAnalytics {
+  views: number;
+  whatsappTaps: number;
+  searches: number;
+  topProduct: { name: string; views: number } | null;
+  topSearches: { query: string; count: number; results: number }[];
+  restockTip: { query: string; count: number } | null;
+}
+
+export async function fetchVendorAnalytics(vendorId: number): Promise<VendorAnalytics | null> {
+  const res = await fetch(`/api/analytics/vendor/${vendorId}`);
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json?.data ?? null;
+}
+
+// ─── Supply-Demand Gap ───────────────────────────────────────
+
+export interface SupplyDemandGap {
+  query: string;
+  searchCount: number;
+  matchedVendors: { vendorId: number; businessName: string; phone: string; whatsapp: string | null; city: string | null; status: string; matchScore: number }[];
+}
+
+export interface SupplyDemandData {
+  gaps: SupplyDemandGap[];
+  topSearches: { query: string; searchCount: number; resultCount: number }[];
+  totalSearches: number;
+  zeroResultRate: number;
+}
+
+export async function fetchSupplyDemandGaps(): Promise<SupplyDemandData | null> {
+  const res = await fetch('/api/analytics/supply-demand');
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json?.data ?? null;
+}
+
+// ─── Unit Economics ──────────────────────────────────────────
+
+export interface UnitEconomics {
+  mrr: number;
+  arpu: number;
+  ltv: number;
+  cac: number;
+  ltvCacRatio: number | null;
+  churnRate: number;
+  activationRate: number;
+  conversionToPaid: number;
+  totalVendors: number;
+  paidVendors: number;
+  churnedVendors: number;
+  activeVendors: number;
+}
+
+export async function fetchUnitEconomics(): Promise<UnitEconomics | null> {
+  const res = await fetch('/api/analytics/unit-economics');
   if (!res.ok) return null;
   const json = await res.json();
   return json?.data ?? null;
