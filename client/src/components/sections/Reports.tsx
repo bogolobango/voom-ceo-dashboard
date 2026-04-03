@@ -195,8 +195,9 @@ KEY METRICS
 Vendors registered: ${stats?.totalVendors ?? 0}
 Vendors with products: ${vendorsWithProducts}
 Total SKUs: ${stats?.totalProducts ?? 0}
-Buyer searches (30d): ${briefingData?.todaySearches ?? 'tracking pending'}
-WhatsApp inquiries (30d): ${briefingData?.todayWhatsappTaps ?? 'tracking pending'}
+Buyer searches (today): ${briefingData?.todaySearches ?? 'tracking pending'}
+WhatsApp inquiries (today): ${briefingData?.todayWhatsappTaps ?? 'tracking pending'}
+Note: Full traffic data available in Google Analytics (GA4 property)
 Completed transactions: ${completedOrders}
 GMV: GH₵ ${totalGMV.toLocaleString('en-GH', { minimumFractionDigits: 2 })}
 MRR: GH₵ ${mrr.toLocaleString()}${mrr === 0 ? ' (pre-revenue)' : ''}

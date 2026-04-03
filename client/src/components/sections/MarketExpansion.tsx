@@ -39,8 +39,8 @@ const MARKETS: Market[] = [
     language: 'English', tier: 'current', status: 'live',
     checklist: [
       { label: 'Market research completed', done: true },
-      { label: 'PawaPay MMO availability confirmed', done: true },
-      { label: 'Local entity registered', done: true },
+      { label: 'PawaPay MMO availability confirmed', done: false },
+      { label: 'Local entity requirements researched', done: false },
       { label: 'Competitive landscape mapped', done: true },
       { label: 'First vendor contacts identified', done: true },
       { label: 'Taxonomy adapted for local vehicle mix', done: true },
@@ -237,12 +237,16 @@ interface ReadinessItem {
 }
 
 const READINESS_ITEMS: ReadinessItem[] = [
+  { label: 'First vendor signed (Ghana Card submitted)', done: true, unlocks: 'Proof of vendor demand' },
+  { label: 'Real products listed by vendors on voomparts.com', done: true, unlocks: 'Marketplace has supply' },
+  { label: 'Real buyer traffic (1.2K users, GA4 confirmed)', done: true, unlocks: 'Proof of buyer demand' },
+  { label: 'Pitch deck ready, investor conversations started', done: true, unlocks: 'Fundraise pipeline' },
+  { label: '30-50 vendors contacted, ~20% response rate', done: true, unlocks: 'Outreach playbook validated' },
+  { label: 'First paid subscriber (revenue > $0)', done: false, unlocks: 'Revenue model validation' },
   { label: 'Ghana PMF proof (50 vendors, 15 txns, GH₵1K MRR)', done: false, unlocks: 'Seed raise' },
   { label: 'PawaPay integration live', done: false, unlocks: 'Multi-market pitch' },
-  { label: 'Nigeria research complete', done: false, unlocks: '"West Africa" narrative' },
-  { label: 'Kenya research complete', done: false, unlocks: '"Pan-African" narrative' },
   { label: '1,000 SKUs listed', done: false, unlocks: 'Marketplace liquidity proof' },
-  { label: 'First paid subscriber', done: false, unlocks: 'Revenue model validation' },
+  { label: 'Nigeria research complete', done: false, unlocks: '"West Africa" narrative' },
 ];
 
 export function MarketExpansion() {

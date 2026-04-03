@@ -224,14 +224,16 @@ export function Growth({ kpis, growthData, vendors }: GrowthProps) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {[
             { milestone: 'Marketplace MVP launched', date: 'Oct 2025', done: true },
-            { milestone: 'First 10 vendors onboarded', date: 'Nov 2025', done: true },
-            { milestone: 'First paid order processed', date: 'Nov 2025', done: true },
-            { milestone: 'Part request system launched', date: 'Jan 2026', done: true },
-            { milestone: 'Vendor subscription tiers', date: 'Feb 2026', done: true },
-            { milestone: 'CEO Dashboard connected to Render DB', date: 'Mar 2026', done: true },
-            { milestone: '100 active vendors', date: 'Apr 2026', done: false },
-            { milestone: 'GH₵ 100k GMV milestone', date: 'May 2026', done: false },
-            { milestone: 'Kumasi expansion', date: 'Q3 2026', done: false },
+            { milestone: 'CEO Dashboard connected to live DB', date: 'Mar 2026', done: true },
+            { milestone: 'First vendor signed (Ghana Card submitted)', date: 'Mar 2026', done: true },
+            { milestone: 'Real vendor products listed on site', date: 'Mar 2026', done: true },
+            { milestone: '1.2K real buyers visiting (GA4 confirmed)', date: 'Mar 2026', done: true },
+            { milestone: 'Pitch deck ready, investor conversations started', date: 'Mar 2026', done: true },
+            { milestone: '30-50 vendors contacted via WhatsApp', date: 'Mar 2026', done: true },
+            { milestone: 'First paid subscriber (revenue > $0)', date: 'TBD', done: false },
+            { milestone: 'PawaPay integration live', date: 'TBD', done: false },
+            { milestone: '50 registered vendors', date: 'TBD', done: false },
+            { milestone: 'GH₵ 1K MRR milestone', date: 'TBD', done: false },
           ].map((item, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
               <div style={{
