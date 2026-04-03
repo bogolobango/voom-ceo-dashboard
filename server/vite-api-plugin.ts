@@ -952,13 +952,34 @@ export default function viteApiPlugin(): Plugin {
             );
             const whatsappUrl = `https://wa.me/${waNumber}?text=${inviteText}`;
             const storedPhone = "+" + waNumber;
+
+            // Check for existing vendor with same phone before inserting
+            const { data: existing } = await sb
+              .from("vendors")
+              .select("id, businessName")
+              .or(`phone.eq.${storedPhone},whatsapp.eq.${storedPhone}`)
+              .maybeSingle();
+            if (existing) {
+              return json(res, {
+                error: `"${existing.businessName}" is already in the system. Find them in the Vendors list and use the WA button on their row to send the invite.`,
+                code: "ALREADY_EXISTS",
+                existingVendor: { id: existing.id, businessName: existing.businessName },
+              }, 409);
+            }
+
             const insertFields: Record<string, any> = {
               businessName: cleanName, phone: storedPhone, whatsapp: storedPhone,
               status: "pending", verified: false,
             };
             if (city && String(city).trim()) insertFields.city = String(city).trim();
             const { data, error } = await sb.from("vendors").insert(insertFields).select().single();
-            if (error) return json(res, { error: "Failed to create vendor record" }, 500);
+            if (error) {
+              // Catch unique constraint violations that slip through
+              const msg = (error as any)?.code === "23505"
+                ? "A vendor with this phone number already exists in the system."
+                : "Failed to create vendor record";
+              return json(res, { error: msg }, error.code === "23505" ? 409 : 500);
+            }
             return json(res, { vendor: data, whatsappUrl }, 201);
           }
 
