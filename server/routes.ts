@@ -1,4 +1,4 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import NodeCache from "node-cache";
 import { randomBytes } from "crypto";
 import { supabase } from "./supabase.js";
@@ -2034,17 +2034,16 @@ router.get("/api/analytics/vendor/:id", async (req, res) => {
 
 // ─── Public Tracking Endpoint (called by voomparts.com marketplace) ──────────
 
-router.post("/api/track", async (req, res) => {
-  // CORS: allow marketplace origin
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  if (req.method === "OPTIONS") return res.sendStatus(200);
-
+router.post("/api/track", express.text({ type: "text/plain" }), async (req, res) => {
   if (!supabase) return res.status(503).json({ error: "offline" });
 
   try {
-    const events = Array.isArray(req.body) ? req.body : [req.body];
+    // sendBeacon with Blob may arrive as text/plain string — parse it
+    let body = req.body;
+    if (typeof body === "string") {
+      try { body = JSON.parse(body); } catch { return res.status(400).json({ error: "Invalid JSON" }); }
+    }
+    const events = Array.isArray(body) ? body : [body];
     const validTypes = [
       "page_view", "session_start", "product_view", "whatsapp_tap",
       "wishlist_add", "cart_add", "search", "order_created",
