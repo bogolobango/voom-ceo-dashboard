@@ -187,7 +187,7 @@ export function MorningBriefing({ briefingData, vendors, kpis }: MorningBriefing
             { label: "Product Views", value: todayProductViews, prev: yesterdayProductViews },
             { label: "WhatsApp Taps", value: todayWhatsappTaps, prev: yesterdayWhatsappTaps },
             { label: "New Users", value: todayNewUsers, prev: yesterdayNewUsers },
-            { label: "MRR (GH₵)", value: mrr, prev: undefined, prefix: 'GH₵ ' },
+            { label: "MRR", value: mrr, prev: undefined, prefix: mrr > 0 ? 'GH₵ ' : '', customDisplay: mrr > 0 ? undefined : 'Pre-rev' },
           ].map((item, i) => (
             <div key={i} style={{
               flex: '1 1 80px',
@@ -202,11 +202,12 @@ export function MorningBriefing({ briefingData, vendors, kpis }: MorningBriefing
                 {item.label}
               </p>
               <p style={{
-                fontSize: '1.125rem', fontWeight: 700, color: '#0F172A',
+                fontSize: '1.125rem', fontWeight: 700,
+                color: (item as any).customDisplay ? '#94A3B8' : '#0F172A',
                 fontFamily: 'Space Grotesk, monospace', margin: '0.125rem 0 0',
                 lineHeight: 1,
               }}>
-                {item.prefix || ''}{formatNumber(Math.round(item.value))}
+                {(item as any).customDisplay || `${item.prefix || ''}${formatNumber(Math.round(item.value))}`}
                 {item.prev !== undefined && <TrendArrow current={item.value} previous={item.prev} />}
               </p>
             </div>

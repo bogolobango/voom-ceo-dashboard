@@ -1093,7 +1093,7 @@ export default function viteApiPlugin(): Plugin {
             if (!sb) return json(res, { source: "offline", data: { views: 0, whatsappTaps: 0, searches: 0, topProduct: null, topSearches: [], restockTip: null } });
             const vendorId = parseInt(vendorAnalyticsMatch[1], 10);
             const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
-            const { data: products } = await sb.from("products").select("id, name, vehicleMake").eq("vendorId", vendorId);
+            const { data: products } = await sb.from("products").select("id, name, vehicleMake, vehicleModel").eq("vendorId", vendorId);
             const productIds = (products || []).map((p: any) => p.id);
             if (productIds.length === 0) return json(res, { source: "database", data: { views: 0, whatsappTaps: 0, searches: 0, topProduct: null, topSearches: [], restockTip: null } });
             const { data: events } = await sb.from("analytics_events").select("eventType, productId").in("productId", productIds).gte("createdAt", thirtyDaysAgo);
@@ -1108,7 +1108,7 @@ export default function viteApiPlugin(): Plugin {
             // Get search events for top searches
             const { data: searchEvents } = await sb.from("analytics_events").select("metadata").eq("eventType", "search").gte("createdAt", thirtyDaysAgo);
             const vendorKeywords = new Set<string>();
-            (products || []).forEach((p: any) => { if (p.vehicleMake) vendorKeywords.add(p.vehicleMake.toLowerCase()); if (p.name) p.name.toLowerCase().split(/\s+/).filter((w: string) => w.length > 3).forEach((w: string) => vendorKeywords.add(w)); });
+            (products || []).forEach((p: any) => { if (p.vehicleMake) vendorKeywords.add(p.vehicleMake.toLowerCase()); if (p.vehicleModel) vendorKeywords.add(p.vehicleModel.toLowerCase()); if (p.name) p.name.toLowerCase().split(/\s+/).filter((w: string) => w.length > 3 && !['with', 'from', 'that', 'this', 'for'].includes(w)).forEach((w: string) => vendorKeywords.add(w)); });
             const searchCounts = new Map<string, { count: number; results: number; relevant: boolean }>();
             (searchEvents || []).forEach((e: any) => {
               const meta = (e as any).metadata as Record<string, unknown> | null;
