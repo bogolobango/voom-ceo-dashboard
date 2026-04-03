@@ -110,6 +110,9 @@ async function startServer() {
     // Health check is always public
     if (req.path === "/health") return next();
 
+    // Track endpoint is public — marketplace sends events without auth
+    if (req.path === "/track" && req.method === "POST") return next();
+
     // In development, allow all requests
     if (process.env.NODE_ENV !== "production") return next();
 
@@ -125,6 +128,17 @@ async function startServer() {
 
     next();
   });
+
+  // ── Track endpoint: explicit CORS + higher rate limit (public ingestion) ──
+  const trackLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 1000, // marketplace can send many events
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => ipKeyGenerator(req),
+  });
+  app.options("/api/track", cors()); // CORS preflight
+  app.use("/api/track", trackLimiter);
 
   // ── Apply rate limiters ──
   app.use("/api/revenue", heavyEndpointLimiter);

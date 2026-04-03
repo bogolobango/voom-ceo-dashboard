@@ -173,20 +173,23 @@ let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
 function flushQueue() {
   if (eventQueue.length === 0) return;
+  if (!TRACKER_URL || TRACKER_URL.includes('your-ceo-dashboard')) return; // not configured
   const batch = [...eventQueue];
   eventQueue = [];
 
-  // Use sendBeacon for reliability (survives page unload)
   const payload = JSON.stringify(batch);
-  if (navigator.sendBeacon) {
-    navigator.sendBeacon(TRACKER_URL, new Blob([payload], { type: 'application/json' }));
-  } else {
+
+  // Prefer fetch with keepalive — more reliable Content-Type handling than sendBeacon
+  // sendBeacon with Blob may not set Content-Type correctly in all browsers
+  if (typeof fetch !== 'undefined') {
     fetch(TRACKER_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: payload,
-      keepalive: true,
+      keepalive: true, // survives page unload like sendBeacon
     }).catch(() => {}); // silent fail
+  } else if (navigator.sendBeacon) {
+    navigator.sendBeacon(TRACKER_URL, new Blob([payload], { type: 'application/json' }));
   }
 }
 
