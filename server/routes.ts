@@ -1747,6 +1747,20 @@ router.post("/api/vendors/invite", async (req, res) => {
       insertFields.city = city.trim();
     }
 
+    // Check for existing vendor with same phone before inserting
+    const { data: existing } = await supabase!
+      .from("vendors")
+      .select("id, businessName")
+      .or(`phone.eq.${storedPhone},whatsapp.eq.${storedPhone}`)
+      .maybeSingle();
+    if (existing) {
+      return res.status(409).json({
+        error: `"${existing.businessName}" is already in the system. Find them in the Vendors list and use the WA button on their row to send the invite.`,
+        code: "ALREADY_EXISTS",
+        existingVendor: { id: existing.id, businessName: existing.businessName },
+      });
+    }
+
     const { data, error } = await supabase!
       .from("vendors")
       .insert(insertFields)
@@ -1755,7 +1769,12 @@ router.post("/api/vendors/invite", async (req, res) => {
 
     if (error) {
       safeLogError("Vendor invite insert error", error);
-      return res.status(500).json({ error: "Failed to create vendor record" });
+      const isDuplicate = (error as any)?.code === "23505";
+      return res.status(isDuplicate ? 409 : 500).json({
+        error: isDuplicate
+          ? "A vendor with this phone number already exists in the system."
+          : "Failed to create vendor record",
+      });
     }
 
     return res.status(201).json({ vendor: data, whatsappUrl });
