@@ -1,12 +1,8 @@
 -- Migration: Add pipeline_stage to vendors table
--- Run this in the Supabase SQL Editor (Dashboard → SQL → New Query)
+-- Run this in the Supabase SQL Editor (Dashboard > SQL > New Query)
 --
 -- This adds a dedicated CRM pipeline stage field so the dashboard can track
 -- vendor progression independently from their approval status.
---
--- Current derivation logic (status → pipeline) conflates admin approval
--- with sales funnel position. A vendor can be "approved" but still in
--- "contacted" stage from a sales perspective.
 
 -- Step 1: Create the enum type
 DO $$ BEGIN
@@ -29,7 +25,9 @@ ALTER TABLE vendors
   ADD COLUMN IF NOT EXISTS pipeline_stage vendor_pipeline_stage DEFAULT 'lead';
 
 -- Step 3: Backfill existing vendors based on current state
--- (Run once after adding the column)
+-- Note: totalListings is computed at the API layer, not a DB column.
+-- We use subqueries against the products table instead.
+
 UPDATE vendors SET pipeline_stage = 'churned'
   WHERE status IN ('rejected', 'suspended') AND pipeline_stage = 'lead';
 
@@ -37,10 +35,12 @@ UPDATE vendors SET pipeline_stage = 'paid'
   WHERE status = 'approved' AND tier != 'free' AND pipeline_stage = 'lead';
 
 UPDATE vendors SET pipeline_stage = 'active'
-  WHERE status = 'approved' AND tier = 'free' AND "totalListings" > 0 AND pipeline_stage = 'lead';
+  WHERE status = 'approved' AND tier = 'free' AND pipeline_stage = 'lead'
+  AND id IN (SELECT "vendorId" FROM products GROUP BY "vendorId" HAVING COUNT(*) > 0);
 
 UPDATE vendors SET pipeline_stage = 'onboarding'
-  WHERE status = 'approved' AND "totalListings" = 0 AND pipeline_stage = 'lead';
+  WHERE status = 'approved' AND pipeline_stage = 'lead'
+  AND id NOT IN (SELECT DISTINCT "vendorId" FROM products WHERE "vendorId" IS NOT NULL);
 
 UPDATE vendors SET pipeline_stage = 'claimed'
   WHERE "userId" IS NOT NULL AND "userId" != 0 AND status = 'pending' AND pipeline_stage = 'lead';
