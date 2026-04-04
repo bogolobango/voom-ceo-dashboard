@@ -43,6 +43,9 @@ externalPort = 80
 VITE_SUPABASE_URL = "https://hdinubnlkfqlxtrdgsne.supabase.co"
 VITE_SUPABASE_ANON_KEY = "sb_publishable_lAf4LcGf1OmnYPZs7cu7mA_8AOvj52d"
 
+[userenv.development]
+NODE_ENV = "development"
+
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 120000
