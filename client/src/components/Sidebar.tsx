@@ -4,13 +4,7 @@
  */
 
 import { useState } from 'react';
-
-interface NavItem {
-  id: string;
-  label: string;
-  icon: React.ReactNode;
-  badge?: number;
-}
+import { NAV_ITEMS } from './nav-config';
 
 interface SidebarProps {
   activeSection: string;
@@ -96,24 +90,24 @@ function IconReports() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6z"/></svg>;
 }
 
-const NAV_ITEMS: NavItem[] = [
-  { id: 'briefing', label: 'Briefing', icon: <IconBriefing /> },
-  { id: 'overview', label: 'Overview', icon: <IconOverview /> },
-  { id: 'vendors', label: 'Vendors', icon: <IconVendors /> },
-  { id: 'products', label: 'Products', icon: <IconProducts /> },
-  { id: 'orders', label: 'Orders', icon: <IconOrders /> },
-  { id: 'revenue', label: 'Revenue', icon: <IconRevenue /> },
-  { id: 'part-requests', label: 'Part Requests', icon: <IconPartRequests /> },
-  { id: 'growth', label: 'Growth', icon: <IconGrowth /> },
-  { id: 'crm', label: 'Outreach CRM', icon: <IconCRM /> },
-  { id: 'security', label: 'Security', icon: <IconSecurity /> },
-  { id: 'competitive', label: 'Competitive', icon: <IconCompetitive /> },
-  { id: 'analytics', label: 'Analytics', icon: <IconAnalytics /> },
-  { id: 'verification', label: 'Doc Review', icon: <IconVerification /> },
-  { id: 'expansion', label: 'Expansion', icon: <IconExpansion /> },
-  { id: 'reports', label: 'Reports', icon: <IconReports /> },
-  { id: 'settings', label: 'Settings', icon: <IconSettings /> },
-];
+const NAV_ICONS: Record<string, React.ReactNode> = {
+  briefing: <IconBriefing />,
+  overview: <IconOverview />,
+  vendors: <IconVendors />,
+  products: <IconProducts />,
+  orders: <IconOrders />,
+  revenue: <IconRevenue />,
+  'part-requests': <IconPartRequests />,
+  growth: <IconGrowth />,
+  crm: <IconCRM />,
+  security: <IconSecurity />,
+  competitive: <IconCompetitive />,
+  analytics: <IconAnalytics />,
+  verification: <IconVerification />,
+  expansion: <IconExpansion />,
+  reports: <IconReports />,
+  settings: <IconSettings />,
+};
 
 export function Sidebar({ activeSection, onNavigate, liveStatus, verificationCount, newLeadsCount }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
@@ -228,38 +222,45 @@ export function Sidebar({ activeSection, onNavigate, liveStatus, verificationCou
             Command
           </p>
         )}
-        {NAV_ITEMS.map(item => (
-          <button
-            key={item.id}
-            onClick={() => onNavigate(item.id)}
-            className={`nav-item ${activeSection === item.id ? 'active' : ''}`}
-            aria-current={activeSection === item.id ? 'page' : undefined}
-            style={{
-              width: '100%',
-              justifyContent: collapsed ? 'center' : 'flex-start',
-              marginBottom: '0.125rem',
-              border: 'none',
-              background: activeSection === item.id ? 'rgba(79,70,229,0.1)' : 'transparent',
-            }}
-            title={collapsed ? item.label : undefined}
-          >
-            <span className="nav-icon" style={{ flexShrink: 0 }}>{item.icon}</span>
-            {!collapsed && <span>{item.label}</span>}
-            {!collapsed && (item.badge || (item.id === 'verification' && verificationCount && verificationCount > 0) || (item.id === 'crm' && newLeadsCount && newLeadsCount > 0)) && (
-              <span style={{
-                marginLeft: 'auto', minWidth: 20, height: 20,
-                borderRadius: 999,
-                background: item.id === 'verification' ? '#E11D48' : '#4F46E5',
-                color: 'white',
-                fontSize: '0.65rem', fontWeight: 700,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                padding: '0 6px',
-              }}>
-                {item.id === 'verification' ? verificationCount : item.id === 'crm' && newLeadsCount ? newLeadsCount : item.badge}
-              </span>
-            )}
-          </button>
-        ))}
+        {NAV_ITEMS.map(item => {
+          const badge = item.id === 'verification' && verificationCount && verificationCount > 0
+            ? verificationCount
+            : item.id === 'crm' && newLeadsCount && newLeadsCount > 0
+              ? newLeadsCount
+              : undefined;
+          return (
+            <button
+              key={item.id}
+              onClick={() => onNavigate(item.id)}
+              className={`nav-item ${activeSection === item.id ? 'active' : ''}`}
+              aria-current={activeSection === item.id ? 'page' : undefined}
+              style={{
+                width: '100%',
+                justifyContent: collapsed ? 'center' : 'flex-start',
+                marginBottom: '0.125rem',
+                border: 'none',
+                background: activeSection === item.id ? 'rgba(79,70,229,0.1)' : 'transparent',
+              }}
+              title={collapsed ? item.label : undefined}
+            >
+              <span className="nav-icon" style={{ flexShrink: 0 }}>{NAV_ICONS[item.id]}</span>
+              {!collapsed && <span>{item.label}</span>}
+              {!collapsed && badge !== undefined && (
+                <span style={{
+                  marginLeft: 'auto', minWidth: 20, height: 20,
+                  borderRadius: 999,
+                  background: item.id === 'verification' ? '#E11D48' : '#4F46E5',
+                  color: 'white',
+                  fontSize: '0.65rem', fontWeight: 700,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  padding: '0 6px',
+                }}>
+                  {badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </nav>
 
       {/* Footer */}
@@ -290,10 +291,10 @@ export function Sidebar({ activeSection, onNavigate, liveStatus, verificationCou
             border: '1px solid rgba(79,70,229,0.08)',
           }}>
             <p style={{ fontSize: '0.7rem', fontWeight: 700, color: '#4F46E5', marginBottom: '0.125rem' }}>
-              VOOM Ghana v1.0
+              VOOM Ghana
             </p>
             <p style={{ fontSize: '0.65rem', color: '#94A3B8' }}>
-              Early Stage · Mar 2026
+              Pre-revenue · CEO Dashboard
             </p>
           </div>
         )}

@@ -3,14 +3,11 @@ import react from "@vitejs/plugin-react";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
-import viteApiPlugin from "./server/vite-api-plugin";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const plugins = [react(), tailwindcss(), viteApiPlugin()];
-
 export default defineConfig({
-  plugins,
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "client", "src"),

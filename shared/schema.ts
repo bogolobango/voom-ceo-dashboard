@@ -8,6 +8,7 @@ import { integer, pgEnum, pgTable, text, timestamp, varchar, decimal, boolean, j
 
 export const userRoleEnum = pgEnum("user_role", ["user", "admin", "vendor"]);
 export const vendorStatusEnum = pgEnum("vendor_status", ["pending", "approved", "rejected", "suspended"]);
+export const vendorPipelineStageEnum = pgEnum("vendor_pipeline_stage", ["lead", "contacted", "responded", "claimed", "onboarding", "active", "paid", "churned"]);
 export const productConditionEnum = pgEnum("product_condition", ["new", "used", "refurbished"]);
 export const productStatusEnum = pgEnum("product_status", ["active", "inactive", "out_of_stock"]);
 export const orderStatusEnum = pgEnum("order_status", ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"]);
@@ -81,6 +82,7 @@ export const vendors = pgTable("vendors", {
   logoUrl: text("logoUrl"),
   coverUrl: text("coverUrl"),
   status: vendorStatusEnum("status").default("pending").notNull(),
+  pipelineStage: vendorPipelineStageEnum("pipeline_stage").default("lead"),
   verified: boolean("verified").default(false).notNull(),
   rating: decimal("rating", { precision: 3, scale: 2 }).default("0"),
   totalSales: integer("totalSales").default(0),

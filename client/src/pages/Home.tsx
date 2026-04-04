@@ -110,7 +110,6 @@ export default function Home() {
   const verificationCount = verificationQuery.data?.length ?? 0;
 
   const kpis = useMemo(() => {
-    if (!statsQuery.data && vendors.length === 0 && orders.length === 0) return null;
     return computeKPIs(statsQuery.data ?? null, vendors, orders, partRequests, growthData);
   }, [statsQuery.data, vendors, orders, partRequests, growthData]);
 
@@ -171,24 +170,8 @@ export default function Home() {
       </WidgetErrorBoundary>
     );
 
-    if (!kpis) {
-      if (isAnyLoading) return (
-        <div style={{ textAlign: 'center', padding: '4rem 1rem' }}>
-          <div style={{ width: 32, height: 32, border: '3px solid rgba(79,70,229,0.15)', borderTopColor: '#4F46E5', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 1rem' }} />
-          <p style={{ fontSize: '0.8125rem', color: '#94A3B8', fontFamily: 'Plus Jakarta Sans' }}>Loading dashboard data…</p>
-        </div>
-      );
-      return (
-        <div style={{ textAlign: 'center', padding: '4rem 1rem' }}>
-          <p style={{ fontFamily: 'Plus Jakarta Sans', fontWeight: 600, color: '#0F172A', marginBottom: '0.25rem' }}>
-            No data available
-          </p>
-          <p style={{ fontSize: '0.8125rem', color: '#94A3B8' }}>
-            Check your backend configuration or refresh to retry.
-          </p>
-        </div>
-      );
-    }
+    // Sections that don't need KPI data can always render.
+    // Sections that do need it receive kpis (possibly null) and handle their own empty states.
     switch (activeSection) {
       case 'briefing': return (
         <WidgetErrorBoundary fallbackTitle="Briefing failed to load">
@@ -431,7 +414,7 @@ export default function Home() {
 
         {/* Page Content */}
         <div style={{ padding: isMobile ? '1rem' : '1.75rem 2rem 3rem' }}>
-          {isAnyLoading && !kpis ? (
+          {isAnyLoading && !statsQuery.data && vendors.length === 0 ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
               <div style={{ textAlign: 'center' }}>
                 <div style={{

@@ -16,12 +16,12 @@ interface VendorCRMProps {
 
 /* ── Pipeline stage config ── */
 const PIPELINE_STAGES = [
-  { key: 'not_contacted', label: 'Not Contacted', color: '#94A3B8' },
+  { key: 'leads', label: 'Leads', color: '#94A3B8' },
   { key: 'contacted', label: 'Contacted', color: '#0EA5E9' },
-  { key: 'responded', label: 'Responded', color: '#7C3AED' },
   { key: 'claimed', label: 'Claimed', color: '#D97706' },
   { key: 'active', label: 'Active', color: '#059669' },
   { key: 'paid', label: 'Paid', color: '#4F46E5' },
+  { key: 'churned', label: 'Churned', color: '#E11D48' },
 ] as const;
 
 /* ── Outreach templates ── */
@@ -55,15 +55,23 @@ const OUTREACH_TEMPLATES = [
 /* ── Helpers ── */
 function derivePipeline(vendors: Vendor[]) {
   const isClaimed = (v: Vendor) => v.userId !== null && v.userId !== 0;
-  const notContacted = vendors.filter(v => !isClaimed(v)).length;
-  const contacted    = vendors.filter(v => !isClaimed(v) && v.status === 'pending' && v.totalListings > 0).length;
-  const responded    = vendors.filter(v => v.status === 'rejected' || v.status === 'suspended').length;
-  const claimed      = vendors.filter(v => isClaimed(v) && v.status === 'pending').length;
-  const approvedVendors = vendors.filter(v => v.status === 'approved');
-  const active = approvedVendors.filter(v => v.totalListings > 0 && v.tier === 'free').length;
-  const paid   = approvedVendors.filter(v => v.tier !== 'free').length;
 
-  return { not_contacted: notContacted, contacted, responded, claimed, active, paid };
+  // Exclude rejected/suspended from the active funnel — they are churned, not prospects
+  const churned = vendors.filter(v => v.status === 'rejected' || v.status === 'suspended').length;
+
+  const activeVendors = vendors.filter(v => v.status !== 'rejected' && v.status !== 'suspended');
+
+  // Pipeline stages (progressive funnel):
+  // Lead (unclaimed, no products) → Contacted (unclaimed, has listings from import) →
+  // Responded/Claimed (has userId) → Active (approved, has listings) → Paid (non-free tier)
+  const leads         = activeVendors.filter(v => !isClaimed(v) && v.totalListings === 0).length;
+  const contacted     = activeVendors.filter(v => !isClaimed(v) && v.totalListings > 0).length;
+  const claimed       = activeVendors.filter(v => isClaimed(v) && v.status === 'pending').length;
+  const approvedVendors = activeVendors.filter(v => v.status === 'approved');
+  const active        = approvedVendors.filter(v => v.totalListings > 0 && v.tier === 'free').length;
+  const paid          = approvedVendors.filter(v => v.tier !== 'free').length;
+
+  return { leads, contacted, claimed, active, paid, churned };
 }
 
 function formatGhanaPhone(phone: string): string {
@@ -216,7 +224,7 @@ export function VendorCRM({ vendors, kpis }: VendorCRMProps) {
 
       {/* ── Pipeline Funnel ── */}
       <GlassSection>
-        <SectionTitle sub="Derived from vendor status &amp; tier data · Not Contacted → Paid">Conversion Funnel</SectionTitle>
+        <SectionTitle sub="Derived from vendor status &amp; tier data · Leads → Paid (churned tracked separately)">Conversion Funnel</SectionTitle>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {PIPELINE_STAGES.map((stage, i) => {
             const count = pipeline[stage.key as keyof typeof pipeline];
