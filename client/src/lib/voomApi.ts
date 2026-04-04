@@ -999,8 +999,21 @@ export interface NameCount {
   count: number;
 }
 
+export interface EventBreakdown {
+  eventType: string;
+  count: number;
+}
+
+export interface TrackingInfo {
+  withVisitorId: number;
+  withoutVisitorId: number;
+  adminEvents: number;
+}
+
 export interface TrafficData {
   overview: TrafficOverview;
+  eventBreakdown: EventBreakdown[];
+  tracking: TrackingInfo;
   trafficSources: NameCount[];
   countries: NameCount[];
   cities: NameCount[];

@@ -616,6 +616,33 @@ const SOURCE_COLORS: Record<string, string> = {
   google: '#4285F4', instagram: '#E1306C', tiktok: '#000000',
 };
 
+const EVENT_TYPE_META: Record<string, { label: string; color: string }> = {
+  product_view: { label: 'Product Views', color: '#4F46E5' },
+  search: { label: 'Searches', color: '#7C3AED' },
+  whatsapp_tap: { label: 'WhatsApp Taps', color: '#25D366' },
+  wishlist_add: { label: 'Wishlist Adds', color: '#D97706' },
+  cart_add: { label: 'Cart Adds', color: '#059669' },
+  order_created: { label: 'Orders Created', color: '#E11D48' },
+  page_view: { label: 'Page Views', color: '#0EA5E9' },
+  session_start: { label: 'Sessions', color: '#64748B' },
+};
+
+function TrackerWarning({ label }: { label: string }) {
+  return (
+    <div style={{
+      padding: '1rem', textAlign: 'center', color: '#94A3B8', fontSize: '0.78rem',
+      background: 'rgba(217,119,6,0.04)', borderRadius: '0.75rem',
+      border: '1px dashed rgba(217,119,6,0.2)',
+    }}>
+      <p style={{ fontWeight: 600, color: '#D97706', margin: '0 0 0.25rem' }}>{label}</p>
+      <p style={{ margin: 0 }}>
+        These require the voom-tracker on voomparts.com.
+        Events are currently logged server-side without visitor identification.
+      </p>
+    </div>
+  );
+}
+
 function TrafficTab() {
   const { data: traffic, isLoading } = useQuery({
     queryKey: ['analytics-traffic'],
@@ -626,40 +653,100 @@ function TrafficTab() {
   if (isLoading) return <div style={{ textAlign: 'center', padding: '3rem', color: '#94A3B8' }}>Loading traffic data...</div>;
   if (!traffic) return (
     <GlassSection>
-      <SectionTitle sub="Add the VOOM tracker to voomparts.com to see traffic data here">No Traffic Data Yet</SectionTitle>
+      <SectionTitle sub="No analytics events recorded in the past 30 days">No Traffic Data Yet</SectionTitle>
       <div style={{ padding: '1.5rem', textAlign: 'center', color: '#94A3B8', fontSize: '0.8125rem' }}>
-        <p style={{ marginBottom: '0.5rem' }}>Traffic analytics require the VOOM tracker script on voomparts.com.</p>
-        <p>See <code style={{ background: 'rgba(79,70,229,0.06)', padding: '0.1rem 0.4rem', borderRadius: '0.25rem', fontSize: '0.75rem' }}>client/src/lib/voom-tracker.ts</code> for integration instructions.</p>
+        <p>No events found. Ensure the marketplace backend is logging to <code style={{ background: 'rgba(79,70,229,0.06)', padding: '0.1rem 0.4rem', borderRadius: '0.25rem', fontSize: '0.75rem' }}>analytics_events</code>.</p>
       </div>
     </GlassSection>
   );
 
-  const { overview, trafficSources, countries, cities, topPages, devices } = traffic;
+  const { overview, eventBreakdown, tracking, trafficSources, countries, cities, topPages, devices } = traffic;
+  const hasTracker = tracking && tracking.withVisitorId > 0;
+  const totalEvents = overview.totalEvents30d;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      {/* Overview KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.5rem' }}>
-        {[
-          { label: 'Active Users', value: overview.activeUsers30d, color: '#4F46E5' },
-          { label: 'Sessions', value: overview.sessions30d, color: '#059669' },
-          { label: 'Page Views', value: overview.pageViews30d, color: '#7C3AED' },
-          { label: 'Total Events', value: overview.totalEvents30d, color: '#D97706' },
-        ].map(s => (
-          <GlassSection key={s.label} style={{ padding: '0.875rem', textAlign: 'center' }}>
-            <p style={{ fontSize: '1.5rem', fontWeight: 800, color: s.color, margin: 0, fontFamily: 'Space Grotesk' }}>{s.value.toLocaleString()}</p>
-            <p style={{ fontSize: '0.68rem', color: '#94A3B8', margin: '0.125rem 0 0', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>{s.label}</p>
-            <p style={{ fontSize: '0.62rem', color: '#CBD5E1', margin: '0.125rem 0 0' }}>Last 30 days</p>
-          </GlassSection>
-        ))}
-      </div>
 
+      {/* Tracking Status Banner */}
+      <GlassSection style={{
+        padding: '0.875rem 1.125rem',
+        background: hasTracker ? 'rgba(5,150,105,0.04)' : 'rgba(217,119,6,0.04)',
+        border: hasTracker ? '1px solid rgba(5,150,105,0.15)' : '1px solid rgba(217,119,6,0.15)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
+          <div style={{
+            width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+            background: hasTracker ? '#059669' : '#D97706',
+          }} />
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <p style={{ fontSize: '0.8125rem', fontWeight: 700, color: hasTracker ? '#059669' : '#D97706', margin: 0 }}>
+              {hasTracker ? 'Visitor Tracking Active' : 'Server-Side Events Only'}
+            </p>
+            <p style={{ fontSize: '0.72rem', color: '#64748B', margin: '0.125rem 0 0' }}>
+              {hasTracker
+                ? `${tracking.withVisitorId.toLocaleString()} tracked / ${tracking.withoutVisitorId.toLocaleString()} server-generated`
+                : `All ${totalEvents.toLocaleString()} events are server-generated (no visitorId). Deploy voom-tracker on voomparts.com for visitor-level analytics, traffic sources, geo, and device data.`
+              }
+            </p>
+          </div>
+          {tracking && tracking.adminEvents > 0 && (
+            <span style={{
+              fontSize: '0.68rem', fontWeight: 600, padding: '0.15rem 0.5rem', borderRadius: 999,
+              background: 'rgba(100,116,139,0.1)', color: '#64748B',
+            }}>
+              {tracking.adminEvents} admin event{tracking.adminEvents !== 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+      </GlassSection>
+
+      {/* Event Type Breakdown — the main content */}
+      <GlassSection>
+        <SectionTitle sub={`${totalEvents.toLocaleString()} events in the last 30 days, broken down by type`}>Event Breakdown</SectionTitle>
+        {(!eventBreakdown || eventBreakdown.length === 0) ? (
+          <p style={{ color: '#94A3B8', fontSize: '0.8125rem', textAlign: 'center', padding: '1rem' }}>No events recorded</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+            {eventBreakdown.map(e => {
+              const meta = EVENT_TYPE_META[e.eventType] || { label: e.eventType, color: '#94A3B8' };
+              const pct = totalEvents > 0 ? (e.count / totalEvents) * 100 : 0;
+              return (
+                <div key={e.eventType}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: meta.color, flexShrink: 0 }} />
+                      <span style={{ fontSize: '0.8125rem', color: '#0F172A', fontWeight: 600, fontFamily: 'Plus Jakarta Sans' }}>
+                        {meta.label}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '1rem', fontWeight: 800, color: meta.color, fontFamily: 'Space Grotesk' }}>
+                        {e.count.toLocaleString()}
+                      </span>
+                      <span style={{ fontSize: '0.68rem', color: '#94A3B8', width: 40, textAlign: 'right' }}>
+                        {pct.toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ height: 8, borderRadius: 999, background: `${meta.color}12`, overflow: 'hidden' }}>
+                    <div style={{
+                      height: '100%', borderRadius: 999, background: meta.color,
+                      width: `${Math.max(pct, 1)}%`, transition: 'width 0.5s ease',
+                    }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </GlassSection>
+
+      {/* Visitor-level panels — only useful with tracker */}
       <div className="two-col-grid">
-        {/* Traffic Sources */}
         <GlassSection>
           <SectionTitle sub="Where your visitors come from">Traffic Sources</SectionTitle>
           {trafficSources.length === 0 ? (
-            <p style={{ color: '#94A3B8', fontSize: '0.8125rem', textAlign: 'center', padding: '1rem' }}>No source data yet</p>
+            <TrackerWarning label="No traffic source data" />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
               {trafficSources.slice(0, 10).map(s => {
@@ -667,10 +754,7 @@ function TrafficTab() {
                 const pct = total > 0 ? (s.count / total) * 100 : 0;
                 return (
                   <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{
-                      width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-                      background: SOURCE_COLORS[s.name] || '#94A3B8',
-                    }} />
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: SOURCE_COLORS[s.name] || '#94A3B8' }} />
                     <span style={{ flex: 1, fontSize: '0.8rem', color: '#0F172A', fontWeight: 500, textTransform: 'capitalize' }}>{s.name}</span>
                     <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0F172A', fontFamily: 'Space Grotesk' }}>{s.count}</span>
                     <span style={{ fontSize: '0.68rem', color: '#94A3B8', width: 40, textAlign: 'right' }}>{pct.toFixed(1)}%</span>
@@ -681,37 +765,32 @@ function TrafficTab() {
           )}
         </GlassSection>
 
-        {/* Geographic Breakdown */}
         <GlassSection>
           <SectionTitle sub="Top countries and cities">Geography</SectionTitle>
           {countries.length === 0 && cities.length === 0 ? (
-            <p style={{ color: '#94A3B8', fontSize: '0.8125rem', textAlign: 'center', padding: '1rem' }}>No geo data yet</p>
+            <TrackerWarning label="No geo data" />
           ) : (
             <>
               {countries.length > 0 && (
                 <div style={{ marginBottom: '0.75rem' }}>
                   <p style={{ fontSize: '0.68rem', fontWeight: 700, color: '#94A3B8', marginBottom: '0.375rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Countries</p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    {countries.slice(0, 8).map(c => (
-                      <div key={c.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0' }}>
-                        <span style={{ fontSize: '0.8rem', color: '#0F172A' }}>{c.name}</span>
-                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4F46E5', fontFamily: 'Space Grotesk' }}>{c.count}</span>
-                      </div>
-                    ))}
-                  </div>
+                  {countries.slice(0, 8).map(c => (
+                    <div key={c.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#0F172A' }}>{c.name}</span>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4F46E5', fontFamily: 'Space Grotesk' }}>{c.count}</span>
+                    </div>
+                  ))}
                 </div>
               )}
               {cities.length > 0 && (
                 <div>
                   <p style={{ fontSize: '0.68rem', fontWeight: 700, color: '#94A3B8', marginBottom: '0.375rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cities</p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    {cities.slice(0, 8).map(c => (
-                      <div key={c.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0' }}>
-                        <span style={{ fontSize: '0.8rem', color: '#0F172A' }}>{c.name}</span>
-                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4F46E5', fontFamily: 'Space Grotesk' }}>{c.count}</span>
-                      </div>
-                    ))}
-                  </div>
+                  {cities.slice(0, 8).map(c => (
+                    <div key={c.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#0F172A' }}>{c.name}</span>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4F46E5', fontFamily: 'Space Grotesk' }}>{c.count}</span>
+                    </div>
+                  ))}
                 </div>
               )}
             </>
@@ -720,11 +799,10 @@ function TrafficTab() {
       </div>
 
       <div className="two-col-grid">
-        {/* Top Pages */}
         <GlassSection>
           <SectionTitle sub="Most viewed pages">Top Pages</SectionTitle>
           {topPages.length === 0 ? (
-            <p style={{ color: '#94A3B8', fontSize: '0.8125rem', textAlign: 'center', padding: '1rem' }}>No page data yet</p>
+            <TrackerWarning label="No page view data" />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               {topPages.slice(0, 10).map((p, i) => (
@@ -742,21 +820,19 @@ function TrafficTab() {
           )}
         </GlassSection>
 
-        {/* Devices */}
         <GlassSection>
           <SectionTitle sub="How users access your site">Devices</SectionTitle>
           {devices.length === 0 ? (
-            <p style={{ color: '#94A3B8', fontSize: '0.8125rem', textAlign: 'center', padding: '1rem' }}>No device data yet</p>
+            <TrackerWarning label="No device data" />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {devices.map(d => {
                 const total = devices.reduce((sum, x) => sum + x.count, 0);
                 const pct = total > 0 ? (d.count / total) * 100 : 0;
-                const icon = d.name === 'mobile' ? '📱' : d.name === 'tablet' ? '📟' : '💻';
                 return (
                   <div key={d.name}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
-                      <span style={{ fontSize: '0.8rem', color: '#0F172A', textTransform: 'capitalize' }}>{icon} {d.name}</span>
+                      <span style={{ fontSize: '0.8rem', color: '#0F172A', textTransform: 'capitalize' }}>{d.name}</span>
                       <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0F172A', fontFamily: 'Space Grotesk' }}>{d.count} ({pct.toFixed(0)}%)</span>
                     </div>
                     <div style={{ height: 6, borderRadius: 999, background: 'rgba(79,70,229,0.08)', overflow: 'hidden' }}>
@@ -769,6 +845,26 @@ function TrafficTab() {
           )}
         </GlassSection>
       </div>
+
+      {/* GA4 Placeholder */}
+      <GlassSection style={{
+        background: 'rgba(66,133,244,0.03)',
+        border: '1px dashed rgba(66,133,244,0.2)',
+      }}>
+        <SectionTitle sub="Connect Google Analytics for full visitor-level data">Google Analytics (GA4)</SectionTitle>
+        <div style={{ padding: '0.5rem 0', color: '#64748B', fontSize: '0.8125rem', lineHeight: 1.6 }}>
+          <p style={{ margin: '0 0 0.5rem' }}>
+            GA4 tracks your real 1.2K+ visitors on voomparts.com with full traffic source, geo, device, and behavior data.
+            To connect it to this dashboard:
+          </p>
+          <ol style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.78rem' }}>
+            <li>Create a service account in Google Cloud Console</li>
+            <li>Enable the Google Analytics Data API</li>
+            <li>Grant the service account Viewer access to your GA4 property</li>
+            <li>Set <code style={{ background: 'rgba(66,133,244,0.08)', padding: '0.1rem 0.3rem', borderRadius: '0.25rem' }}>GA4_PROPERTY_ID</code>, <code style={{ background: 'rgba(66,133,244,0.08)', padding: '0.1rem 0.3rem', borderRadius: '0.25rem' }}>GA4_CLIENT_EMAIL</code>, and <code style={{ background: 'rgba(66,133,244,0.08)', padding: '0.1rem 0.3rem', borderRadius: '0.25rem' }}>GA4_PRIVATE_KEY</code> in your environment</li>
+          </ol>
+        </div>
+      </GlassSection>
     </div>
   );
 }

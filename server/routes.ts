@@ -2217,6 +2217,23 @@ router.get("/api/analytics/traffic", async (_req, res) => {
           totalEvents30d: events.length,
           engagementRate: sessions30d > 0 ? Math.round((events.filter(e => e.eventType !== "session_start" && e.eventType !== "page_view").length / sessions30d) * 100) : 0,
         },
+        // Event breakdown by type
+        eventBreakdown: (() => {
+          const byType = new Map<string, number>();
+          for (const e of events) byType.set(e.eventType, (byType.get(e.eventType) || 0) + 1);
+          return [...byType.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .map(([eventType, count]) => ({ eventType, count }));
+        })(),
+        // How many events have visitor tracking vs server-generated
+        tracking: {
+          withVisitorId: events.filter(e => e.visitorId).length,
+          withoutVisitorId: events.filter(e => !e.visitorId).length,
+          adminEvents: events.filter(e => {
+            const meta = e.metadata as Record<string, unknown> | null;
+            return meta?.source === 'outreach_invite';
+          }).length,
+        },
         trafficSources: sortedEntries(sourceMap),
         countries: sortedEntries(countryMap),
         cities: sortedEntries(cityMap),
