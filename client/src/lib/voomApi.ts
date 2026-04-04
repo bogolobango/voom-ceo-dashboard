@@ -186,7 +186,7 @@ export async function fetchStats(): Promise<AdminStats | null> {
 
 // ─── Vendor List ───
 export async function fetchVendors(): Promise<Vendor[]> {
-  const result = await apiGet<{ source: string; data: Vendor[] }>('/api/vendors');
+  const result = await apiGet<{ source: string; data: Vendor[] }>('/api/vendors?limit=1000');
   if (result?.source === 'database') {
     setDataSource('database');
     return result.data;
