@@ -6,6 +6,9 @@
  */
 
 import { useState } from 'react';
+// NAV_ITEMS in nav-config.ts is the single source of truth for section IDs, labels,
+// and ordering. MobileNav keeps its own icon SVGs (JSX can't live in a .ts config),
+// but the section list here MUST match nav-config.ts. If you add a section, add it to both.
 
 interface MobileNavProps {
   activeSection: string;
@@ -169,12 +172,51 @@ const MORE_ITEMS = [
       </svg>
     ),
   },
+  {
+    id: 'expansion',
+    label: 'Expansion',
+    description: 'Pan-Africa market expansion',
+    color: '#0EA5E9',
+    bg: 'rgba(14,165,233,0.08)',
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+      </svg>
+    ),
+  },
+  {
+    id: 'reports',
+    label: 'Reports',
+    description: 'Investor snapshots & exports',
+    color: '#4F46E5',
+    bg: 'rgba(79,70,229,0.08)',
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/>
+        <path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6z"/>
+      </svg>
+    ),
+  },
+  {
+    id: 'settings',
+    label: 'Settings',
+    description: 'Dashboard configuration',
+    color: '#64748B',
+    bg: 'rgba(100,116,139,0.08)',
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    ),
+  },
 ];
 
 export function MobileNav({ activeSection, onNavigate }: MobileNavProps) {
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const isMoreActive = ['vendors', 'revenue', 'products', 'crm', 'security', 'competitive', 'analytics', 'verification'].includes(activeSection);
+  const isMoreActive = MORE_ITEMS.some(item => item.id === activeSection);
 
   const handleMoreItemClick = (id: string) => {
     onNavigate(id);

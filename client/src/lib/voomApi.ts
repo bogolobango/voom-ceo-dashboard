@@ -761,6 +761,17 @@ export async function updateVendorStatus(vendorId: number, status: string): Prom
   } catch { return false; }
 }
 
+export async function updateVendorPipelineStage(vendorId: number, pipelineStage: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/vendors/${vendorId}/pipeline-stage`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pipelineStage }),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
 export async function updateVendorTier(vendorId: number, tier: string, tierExpiresAt?: string): Promise<boolean> {
   try {
     const res = await fetch(`/api/vendors/${vendorId}/tier`, {

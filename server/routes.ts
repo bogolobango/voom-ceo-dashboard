@@ -1314,6 +1314,34 @@ router.patch("/api/vendors/:id/status", async (req, res) => {
   }
 });
 
+router.patch("/api/vendors/:id/pipeline-stage", async (req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const vendorId = parseInt(req.params.id, 10);
+    if (isNaN(vendorId)) return res.status(400).json({ error: "Invalid vendor ID" });
+
+    const { pipelineStage } = req.body;
+    const validStages = ["lead", "contacted", "responded", "claimed", "onboarding", "active", "paid", "churned"];
+    if (!validStages.includes(pipelineStage)) {
+      return res.status(400).json({ error: "Invalid stage. Must be one of: " + validStages.join(", ") });
+    }
+
+    const { data, error } = await supabase!
+      .from("vendors")
+      .update({ pipeline_stage: pipelineStage, updatedAt: new Date().toISOString() })
+      .eq("id", vendorId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: "Vendor not found" });
+    res.json(data);
+  } catch (error) {
+    safeLogError("Vendor pipeline stage update error", error);
+    res.status(500).json({ error: "Database query failed" });
+  }
+});
+
 router.patch("/api/vendors/:id/tier", async (req, res) => {
   if (dbUnavailable(res)) return;
   try {

@@ -533,7 +533,7 @@ function LeadInbox() {
     <div style={{ display: 'flex', gap: '1rem', minHeight: 400 }}>
       {/* Left: Lead List */}
       <div style={{
-        width: 300, flexShrink: 0, display: 'flex', flexDirection: 'column',
+        width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column',
         background: 'rgba(255,255,255,0.6)', borderRadius: '1rem',
         border: '1px solid rgba(79,70,229,0.06)', overflow: 'hidden',
       }}>
@@ -551,7 +551,7 @@ function LeadInbox() {
                 fontFamily: 'Plus Jakarta Sans',
               }}
             >
-              {t === 'all' ? 'All' : t.charAt(0).toUpperCase() + t.slice(1)}
+              {t === 'all' ? 'All' : t === 'vendor' ? 'Vendors' : t === 'customer' ? 'Customers' : 'Unknown'}
             </button>
           ))}
         </div>
@@ -663,13 +663,13 @@ function LeadInbox() {
                 onClick={() => leadTypeMutation.mutate({ id: selectedLead.id, type: 'vendor', status: 'qualified' })}
                 style={{ padding: '0.25rem 0.625rem', borderRadius: '0.375rem', border: 'none', background: 'rgba(5,150,105,0.1)', color: '#059669', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}
               >
-                Mark Vendor
+                Mark as Vendor
               </button>
               <button
                 onClick={() => leadTypeMutation.mutate({ id: selectedLead.id, type: 'customer', status: 'qualified' })}
                 style={{ padding: '0.25rem 0.625rem', borderRadius: '0.375rem', border: 'none', background: 'rgba(79,70,229,0.08)', color: '#4F46E5', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}
               >
-                Mark Customer
+                Mark as Customer
               </button>
               <button
                 onClick={() => leadTypeMutation.mutate({ id: selectedLead.id, type: selectedLead.type, status: 'dead' })}
