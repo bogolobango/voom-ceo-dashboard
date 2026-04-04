@@ -20,8 +20,8 @@ const CACHE_KEYS = {
   vendorHealth: "api:vendor-health",
 };
 
-const MAX_PAGE_SIZE = 200;
-const DEFAULT_PAGE_SIZE = 100;
+const MAX_PAGE_SIZE = 1000;
+const DEFAULT_PAGE_SIZE = 500;
 
 function parsePagination(query: Record<string, any>) {
   const limit = Math.min(Math.max(1, parseInt(query.limit, 10) || DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE);
