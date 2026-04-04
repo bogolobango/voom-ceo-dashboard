@@ -6,7 +6,9 @@
  */
 
 import { useState } from 'react';
-import { NAV_ITEMS, SETTINGS_ITEM } from './nav-config';
+// NAV_ITEMS in nav-config.ts is the single source of truth for section IDs, labels,
+// and ordering. MobileNav keeps its own icon SVGs (JSX can't live in a .ts config),
+// but the section list here MUST match nav-config.ts. If you add a section, add it to both.
 
 interface MobileNavProps {
   activeSection: string;

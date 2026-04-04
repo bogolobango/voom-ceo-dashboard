@@ -6,8 +6,9 @@
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import type { Vendor, DashboardKPIs } from '../../lib/voomApi';
-import { fetchOutreachInvites, sendOutreachInvite } from '../../lib/voomApi';
+import { fetchOutreachInvites, sendOutreachInvite, updateVendorPipelineStage } from '../../lib/voomApi';
 import { WhatsAppAcquisition } from './WhatsAppAcquisition';
+import { toast } from 'sonner';
 
 interface VendorCRMProps {
   vendors: Vendor[];
@@ -111,6 +112,7 @@ export function VendorCRM({ vendors, kpis }: VendorCRMProps) {
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [invitedMap, setInvitedMap] = useState<Map<number, string>>(new Map());
   const [invitingId, setInvitingId] = useState<number | null>(null);
+  const [updatingStageId, setUpdatingStageId] = useState<number | null>(null);
 
   useEffect(() => {
     fetchOutreachInvites().then(rows => {
@@ -132,6 +134,19 @@ export function VendorCRM({ vendors, kpis }: VendorCRMProps) {
       setInvitingId(null);
     }
   }, [invitingId]);
+
+  const handlePipelineStageChange = useCallback(async (vendorId: number, stage: string) => {
+    setUpdatingStageId(vendorId);
+    try {
+      const ok = await updateVendorPipelineStage(vendorId, stage);
+      if (ok) toast.success(`Pipeline stage updated to "${stage}"`);
+      else toast.error('Failed to update pipeline stage');
+    } catch {
+      toast.error('Failed to update pipeline stage');
+    } finally {
+      setUpdatingStageId(null);
+    }
+  }, []);
 
   const pipeline = useMemo(() => derivePipeline(vendors), [vendors]);
   const totalInPipeline = useMemo(() => Object.values(pipeline).reduce((s, v) => s + v, 0), [pipeline]);
@@ -354,7 +369,7 @@ export function VendorCRM({ vendors, kpis }: VendorCRMProps) {
         {/* Desktop Table Header */}
         <div className="vendor-table-header" style={{
           display: 'grid',
-          gridTemplateColumns: '2fr 1fr 1fr 0.8fr 0.8fr 0.6fr 0.6fr',
+          gridTemplateColumns: '2fr 1fr 0.8fr 0.8fr 0.8fr 1fr 0.6fr 0.6fr',
           padding: '0.75rem 1.25rem',
           borderBottom: '1px solid rgba(79,70,229,0.06)',
           background: 'rgba(248,250,252,0.8)',
@@ -366,6 +381,7 @@ export function VendorCRM({ vendors, kpis }: VendorCRMProps) {
             { label: 'City', field: 'city' as const },
             { label: 'Status', field: 'status' as const },
             { label: 'Tier', field: 'tier' as const },
+            { label: 'Pipeline', field: null },
             { label: 'Products', field: 'totalListings' as const },
             { label: 'Invite', field: null },
           ].map((h, i) => (
@@ -428,6 +444,21 @@ export function VendorCRM({ vendors, kpis }: VendorCRMProps) {
                     <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
                       Products: <strong style={{ color: '#0F172A', fontFamily: 'Space Grotesk' }}>{vendor.totalListings}</strong>
                     </span>
+                    <select
+                      value={(vendor as any).pipelineStage || 'lead'}
+                      onChange={e => handlePipelineStageChange(vendor.id, e.target.value)}
+                      disabled={updatingStageId === vendor.id}
+                      style={{
+                        fontSize: '0.68rem', fontWeight: 600, fontFamily: 'Plus Jakarta Sans',
+                        padding: '0.15rem 0.25rem', borderRadius: '0.375rem',
+                        border: '1px solid rgba(79,70,229,0.15)', background: 'rgba(79,70,229,0.04)',
+                        color: '#4F46E5', cursor: 'pointer',
+                      }}
+                    >
+                      {PIPELINE_STAGES.map(s => (
+                        <option key={s.key} value={s.key}>{s.label}</option>
+                      ))}
+                    </select>
                     {vendor.userId === null ? (() => {
                       const invitedAt = invitedMap.get(vendor.id);
                       return (
@@ -459,7 +490,7 @@ export function VendorCRM({ vendors, kpis }: VendorCRMProps) {
                 {/* Desktop table layout */}
                 <div className="vendor-desktop-row" style={{
                   display: 'grid',
-                  gridTemplateColumns: '2fr 1fr 1fr 0.8fr 0.8fr 0.6fr 0.6fr',
+                  gridTemplateColumns: '2fr 1fr 0.8fr 0.8fr 0.8fr 1fr 0.6fr 0.6fr',
                   alignItems: 'center',
                   padding: '0.75rem 1.25rem',
                   gap: '0.25rem',
@@ -490,6 +521,21 @@ export function VendorCRM({ vendors, kpis }: VendorCRMProps) {
                     padding: '0.2rem 0.6rem', borderRadius: 999, textAlign: 'center',
                     justifySelf: 'start',
                   }}>{vendor.tier}</span>
+                  <select
+                    value={(vendor as any).pipelineStage || 'lead'}
+                    onChange={e => handlePipelineStageChange(vendor.id, e.target.value)}
+                    disabled={updatingStageId === vendor.id}
+                    style={{
+                      fontSize: '0.7rem', fontWeight: 600, fontFamily: 'Plus Jakarta Sans',
+                      padding: '0.2rem 0.3rem', borderRadius: '0.375rem',
+                      border: '1px solid rgba(79,70,229,0.15)', background: 'rgba(79,70,229,0.04)',
+                      color: '#4F46E5', cursor: 'pointer', justifySelf: 'start',
+                    }}
+                  >
+                    {PIPELINE_STAGES.map(s => (
+                      <option key={s.key} value={s.key}>{s.label}</option>
+                    ))}
+                  </select>
                   <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#0F172A', fontFamily: 'Space Grotesk' }}>
                     {vendor.totalListings}
                   </span>

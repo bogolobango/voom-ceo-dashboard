@@ -13,7 +13,7 @@ A CEO/admin dashboard for the VOOM Ghana marketplace platform, built with React,
 
 ```
 client/        React frontend source
-server/        Express backend (index.ts, routes.ts, db.ts, vite-api-plugin.ts)
+server/        Express backend (index.ts, routes.ts, db.ts, supabase.ts)
 shared/        Shared TypeScript schemas (Drizzle schema)
 api/           Vercel serverless adapter (legacy, not used on Replit)
 dist/public/   Built frontend output
