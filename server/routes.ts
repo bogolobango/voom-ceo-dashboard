@@ -106,7 +106,7 @@ router.get("/api/vendors", async (req, res) => {
   try {
     const { data: allVendors, error } = await supabase!
       .from("vendors")
-      .select("id, userId, businessName, phone, whatsapp, city, region, status, verified, rating, totalSales, tier, isFeatured, claimToken, claimTokenExpiresAt, claimStatus, createdAt")
+      .select("id, userId, businessName, phone, whatsapp, city, region, status, verified, rating, totalSales, tier, isFeatured, claimToken, claimTokenExpiresAt, claimStatus, pipeline_stage, createdAt")
       .order("createdAt", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -161,6 +161,7 @@ router.get("/api/vendors", async (req, res) => {
         claimToken: v.claimToken ?? null,
         claimTokenExpiresAt: v.claimTokenExpiresAt ?? null,
         claimStatus: v.claimStatus ?? 'unclaimed',
+        pipeline_stage: v.pipeline_stage ?? 'lead',
         createdAt: v.createdAt,
       };
     });
