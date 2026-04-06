@@ -42,6 +42,7 @@ externalPort = 80
 [userenv.shared]
 VITE_SUPABASE_URL = "https://hdinubnlkfqlxtrdgsne.supabase.co"
 VITE_SUPABASE_ANON_KEY = "sb_publishable_lAf4LcGf1OmnYPZs7cu7mA_8AOvj52d"
+GITHUB_TOKEN = "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"
 
 [userenv.development]
 NODE_ENV = "development"
