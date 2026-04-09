@@ -1,0 +1,312 @@
+# TASK: Fill Supply Gaps — Add 200+ Parts Matching Real Mechanic Search Demand
+
+## Repo
+`github.com/bogolobango/voom-ghana-marketplace`
+Branch: `claude/implement-marketplace-fixes-1P7ED`
+
+## The Problem
+
+We have 5,100 visitors and 8-second engagement. Analytics shows mechanics ARE searching but leaving because we don't have their parts. Here are the TOP REAL SEARCHES from our analytics (ranked by frequency):
+
+| Search query | Times searched | What we need |
+|---|---|---|
+| Hyundai Santa Fe (all parts) | 14 | Brake pads, shocks, filters, headlights, steering rack |
+| Toyota Camry 2015 headlight | 11 | Headlight assemblies, bulbs for 2012-2017 Camry |
+| 2008 Toyota Camry front cut | 9 | Front bumper, fender, hood, headlight for 2007-2011 |
+| 2015 Honda Civic | 9 | Brake pads, filters, shocks, CV axle for 2012-2015 |
+| Toyota Vitz/Yaris | 7 | Headlights, filters, brake pads, shocks |
+| 2013 Toyota Camry headlight | 7 | Headlight assembly for 2012-2014 Camry |
+| Honda Civic bumper locker | 6 | Bumper bracket/reinforcement for Civic |
+| KIA Optima oil pump | 6 | Oil pump, engine parts for 2011-2020 Optima |
+| Toyota Yaris headlight concave projector | 5 | Projector headlight for Yaris/Vitz |
+| 2009 RAV4 steering rack | 5 | Power steering rack for 2006-2012 RAV4 |
+| Toyota Belta | 5 | All common parts for Belta/Yaris Sedan |
+| Nissan (general) | 5 | Almera, Sentra, X-Trail common parts |
+| Audi | 4 | A3, A4, Q5 common maintenance parts |
+| Back beam | 7 | Rear bumper reinforcement/back beam universal + Toyota |
+
+## Current Inventory Gaps
+
+We have 493 products but the category distribution is WRONG for mechanics:
+- Brakes, Suspension & Steering: only 20 products (NEED 80+)
+- Engine & Drivetrain: only 27 products (NEED 80+)
+- Filters & Fluids: only 20 products (NEED 60+)
+- 184 products have NO CATEGORY assigned
+- 121 products have NO VEHICLE MAKE assigned
+
+## What You Need To Build
+
+### Step 1: Create a product generation script
+
+Create a file at `scripts/fill-supply-gaps.mjs` that:
+
+1. Connects to the Supabase database (same pattern as `scripts/audit-listings.mjs` — use `pg` package, read `SUPABASE_DATABASE_URL` or `DATABASE_URL` from env)
+
+2. For each vehicle + part combination below, creates a product listing with:
+   - Realistic product name (e.g., "Toyota Camry 2012-2017 Front Brake Pads (Ceramic)")
+   - Real OEM or aftermarket part number (search for the actual part number)
+   - Realistic Ghana market price in GHS
+   - Proper category ID (look up from the `categories` table)
+   - Vehicle make, model, year range
+   - Condition: mix of "new" and "used"
+   - Description: 2-3 sentences about the part, fitment, and what it does
+   - Quantity: 1-5
+
+3. For each product, searches for a matching product image (use Bing Image Search or Google), uploads it to Cloudinary (same pattern as `scripts/audit-listings.mjs`), and stores the Cloudinary URL.
+
+4. Assigns the product to a randomly selected approved vendor from the database (distribute products across vendors so no single vendor gets all the new parts).
+
+5. Inserts the product into the `products` table.
+
+### Step 2: The parts to add
+
+Generate listings for these EXACT vehicle + part combinations. These match our real search demand:
+
+**TOYOTA CAMRY (2007-2017) — 20 parts:**
+- Front brake pads (ceramic)
+- Rear brake pads
+- Front brake rotors (pair)
+- Oil filter
+- Air filter
+- Cabin air filter
+- Spark plugs (set of 4)
+- Front shock absorbers (pair)
+- Rear shock absorbers (pair)
+- Headlight assembly (left)
+- Headlight assembly (right)
+- Front bumper cover
+- Radiator
+- Alternator
+- Starter motor
+- Power steering rack
+- CV axle (left)
+- CV axle (right)
+- Timing chain kit
+- Water pump
+
+**TOYOTA COROLLA (2008-2019) — 15 parts:**
+- Front brake pads
+- Oil filter
+- Air filter
+- Spark plugs (set of 4)
+- Front shock absorbers (pair)
+- Headlight assembly (left)
+- Headlight assembly (right)
+- Radiator
+- Alternator
+- Starter motor
+- CV axle (left)
+- Front bumper cover
+- Side mirror (left)
+- Timing chain kit
+- Cabin air filter
+
+**TOYOTA YARIS/VITZ (2005-2018) — 12 parts:**
+- Front brake pads
+- Oil filter
+- Air filter
+- Spark plugs
+- Front shock absorbers (pair)
+- Headlight assembly (left, projector type)
+- Headlight assembly (right, projector type)
+- Radiator
+- Starter motor
+- Front bumper cover
+- Side mirror (left)
+- CV axle (left)
+
+**TOYOTA RAV4 (2006-2018) — 12 parts:**
+- Front brake pads
+- Oil filter
+- Air filter
+- Front shock absorbers (pair)
+- Power steering rack
+- Headlight assembly (left)
+- Radiator
+- Alternator
+- CV axle (left)
+- Front bumper cover
+- Wheel bearing hub assembly (front)
+- Water pump
+
+**HONDA CIVIC (2006-2021) — 15 parts:**
+- Front brake pads
+- Oil filter
+- Air filter
+- Cabin air filter
+- Spark plugs (set of 4)
+- Front shock absorbers (pair)
+- Headlight assembly (left)
+- Headlight assembly (right)
+- Front bumper cover
+- Front bumper bracket/reinforcement ("bumper locker")
+- Radiator
+- Alternator
+- AC compressor
+- CV axle (left)
+- Side mirror (left)
+
+**HONDA ACCORD (2008-2022) — 10 parts:**
+- Front brake pads
+- Oil filter
+- Air filter
+- Front shock absorbers (pair)
+- Headlight assembly (left)
+- Radiator
+- Alternator
+- Front bumper cover
+- CV axle (left)
+- Timing chain kit
+
+**HYUNDAI SANTA FE (2006-2020) — 15 parts:**
+- Front brake pads
+- Rear brake pads
+- Oil filter
+- Air filter
+- Cabin air filter
+- Front shock absorbers (pair)
+- Rear shock absorbers (pair)
+- Headlight assembly (left)
+- Headlight assembly (right)
+- Power steering rack
+- Radiator
+- Alternator
+- Front bumper cover
+- CV axle (left)
+- Wheel bearing hub assembly
+
+**HYUNDAI TUCSON (2005-2021) — 10 parts:**
+- Front brake pads
+- Oil filter
+- Air filter
+- Front shock absorbers (pair)
+- Headlight assembly (left)
+- Radiator
+- Control arm (lower, front)
+- Ignition coil
+- Front bumper cover
+- Stabilizer link
+
+**KIA OPTIMA (2011-2020) — 10 parts:**
+- Oil pump
+- Front brake pads
+- Oil filter
+- Air filter
+- Front shock absorbers (pair)
+- Headlight assembly (left)
+- Alternator
+- Front bumper cover
+- Radiator
+- Starter motor
+
+**NISSAN ALMERA/SENTRA (2000-2018) — 10 parts:**
+- Front brake pads
+- Oil filter
+- Air filter
+- Front shock absorbers (pair)
+- Headlight assembly (left)
+- Radiator
+- Alternator
+- Starter motor
+- CV axle (left)
+- Timing chain kit
+
+**NISSAN X-TRAIL (2007-2020) — 8 parts:**
+- Front brake pads
+- Oil filter
+- Air filter
+- Front shock absorbers (pair)
+- Headlight assembly (left)
+- Radiator
+- CV axle (left)
+- Wheel bearing hub assembly
+
+**FORD (RANGER, FOCUS, ESCAPE) — 10 parts:**
+- Ford Ranger front brake pads
+- Ford Ranger oil filter
+- Ford Ranger radiator
+- Ford Ranger headlight assembly
+- Ford Focus front brake pads
+- Ford Focus air filter
+- Ford Focus headlight assembly
+- Ford Escape front shock absorbers
+- Ford Escape oil filter
+- Ford Escape radiator
+
+**BMW 3 SERIES / 5 SERIES — 8 parts:**
+- BMW 3 Series front brake pads
+- BMW 3 Series oil filter
+- BMW 3 Series air filter
+- BMW 3 Series headlight assembly
+- BMW 5 Series front brake pads
+- BMW 5 Series oil filter
+- BMW 5 Series radiator
+- BMW 5 Series alternator
+
+**MERCEDES-BENZ C-CLASS / E-CLASS — 8 parts:**
+- C-Class front brake pads
+- C-Class oil filter
+- C-Class air filter
+- C-Class headlight assembly
+- E-Class front brake pads
+- E-Class oil filter
+- E-Class radiator
+- E-Class alternator
+
+**UNIVERSAL / BACK BEAM — 5 parts:**
+- Rear bumper reinforcement bar (universal)
+- Rear bumper reinforcement bar (Toyota Camry)
+- Rear bumper reinforcement bar (Honda Civic)
+- Rear bumper reinforcement bar (Hyundai)
+- Rear bumper reinforcement bar (Nissan)
+
+**TOTAL: ~168 parts**
+
+### Step 3: Pricing guide
+
+Use these realistic Ghana market prices (in GHS):
+
+| Part type | New price range | Used price range |
+|---|---|---|
+| Brake pads (front) | 150-400 | 80-200 |
+| Brake rotors (pair) | 300-600 | 150-350 |
+| Oil filter | 25-80 | N/A (always new) |
+| Air filter | 30-100 | N/A (always new) |
+| Cabin filter | 40-120 | N/A (always new) |
+| Spark plugs (set) | 80-250 | N/A (always new) |
+| Shock absorbers (pair) | 400-900 | 200-500 |
+| Headlight assembly | 350-1200 | 200-700 |
+| Radiator | 400-900 | 250-600 |
+| Alternator | 500-1200 | 300-700 |
+| Starter motor | 400-1000 | 250-600 |
+| Steering rack | 800-2000 | 500-1200 |
+| CV axle | 250-600 | 150-400 |
+| Front bumper | 300-800 | 200-500 |
+| Timing chain kit | 300-700 | N/A (always new) |
+| Water pump | 200-500 | 120-300 |
+| Side mirror | 100-400 | 60-250 |
+| Control arm | 200-500 | 120-300 |
+| Wheel bearing hub | 250-600 | 150-350 |
+| Oil pump | 500-1200 | 300-700 |
+| Bumper reinforcement | 150-400 | 80-250 |
+
+Mix of ~60% new, 40% used/refurbished.
+
+### Step 4: Category ID mapping
+
+Query the `categories` table to get IDs, but here's the expected mapping:
+- Engine & Drivetrain → categoryId 1
+- Brakes, Suspension & Steering → categoryId 2
+- Exterior & Body Parts → categoryId 3
+- Headlights & Lighting → categoryId 4
+- Cooling System → categoryId 5
+- Filters & Fluids → categoryId 6
+- Transmission & Clutch → categoryId 7
+- Electrical & Electronics → categoryId 8
+- Wheels & Tires → categoryId 9
+
+### Step 5: Vendor assignment
+
+Query approved vendors and distribute products:
+```sql
+SELECT id, "businessName" FROM vendors WHERE status = 'approved' ORDER BY RANDOM();
