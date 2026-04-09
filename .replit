@@ -43,6 +43,7 @@ externalPort = 80
 VITE_SUPABASE_URL = "https://hdinubnlkfqlxtrdgsne.supabase.co"
 VITE_SUPABASE_ANON_KEY = "sb_publishable_lAf4LcGf1OmnYPZs7cu7mA_8AOvj52d"
 GITHUB_TOKEN = "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"
+ALLOWED_ORIGINS = "https://05fe6dff-6c95-4b95-bda2-e443437050da-00-3ses5itj00h25.picard.replit.dev,https://voomparts.com,http://localhost:5000"
 
 [userenv.development]
 NODE_ENV = "development"
