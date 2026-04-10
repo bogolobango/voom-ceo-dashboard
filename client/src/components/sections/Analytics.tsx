@@ -7,13 +7,13 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   fetchAnalyticsUsers, fetchProductAnalytics, fetchVisitorAnalytics, fetchBehaviorFunnel,
-  fetchTrafficAnalytics, fetchSupplyDemandGaps, fetchUnitEconomics,
+  fetchTrafficAnalytics, fetchSupplyDemandGaps, fetchUnitEconomics, fetchEngagementAnalytics,
   type AnalyticsUser, type ProductViewStat, type VisitorAnalyticsData, type BehaviorFunnelData,
-  type TrafficData, type SupplyDemandData, type UnitEconomics,
+  type TrafficData, type SupplyDemandData, type UnitEconomics, type EngagementData,
 } from '../../lib/voomApi';
 import { UserAnalyticsDrawer } from '../UserAnalyticsDrawer';
 
-type Tab = 'users' | 'products' | 'traffic' | 'gaps' | 'economics';
+type Tab = 'users' | 'products' | 'traffic' | 'engagement' | 'gaps' | 'economics';
 type TimeRange = '1d' | '7d' | '30d' | 'all';
 
 const TIME_LABELS: Record<TimeRange, string> = { '1d': 'Today', '7d': '7 Days', '30d': '30 Days', all: 'All Time' };
@@ -872,6 +872,168 @@ function TrafficTab() {
   );
 }
 
+// ─── Engagement Tab ───
+
+function EngagementTab() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['analytics-engagement'],
+    queryFn: fetchEngagementAnalytics,
+    staleTime: 120_000,
+  });
+
+  if (isLoading) return <div style={{ textAlign: 'center', padding: '3rem', color: '#94A3B8' }}>Loading engagement data...</div>;
+  if (!data) return (
+    <GlassSection>
+      <SectionTitle sub="Requires new marketplace event types (vendor_view, filter_used, page_leave)">No Engagement Data Yet</SectionTitle>
+      <p style={{ color: '#94A3B8', fontSize: '0.8125rem', textAlign: 'center', padding: '1rem' }}>
+        Engagement analytics will populate once the marketplace ships the new tracking events.
+      </p>
+    </GlassSection>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
+      {/* WhatsApp Conversion Funnel */}
+      <GlassSection>
+        <SectionTitle sub="Product views → WhatsApp taps (7d)">WhatsApp Conversion Funnel</SectionTitle>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+          {[
+            { label: 'Product Views', value: data.whatsappFunnel.views, color: '#4F46E5' },
+            { label: 'WhatsApp Taps', value: data.whatsappFunnel.taps, color: '#25D366' },
+            { label: 'Tap Rate', value: `${data.whatsappFunnel.tapRate}%`, color: data.whatsappFunnel.tapRate > 10 ? '#059669' : '#D97706' },
+          ].map(s => (
+            <div key={s.label} style={{ textAlign: 'center', padding: '0.75rem', borderRadius: '0.75rem', background: 'rgba(248,250,252,0.8)' }}>
+              <p style={{ fontSize: '1.5rem', fontWeight: 800, color: s.color, margin: 0, fontFamily: 'Space Grotesk' }}>{typeof s.value === 'number' ? s.value.toLocaleString() : s.value}</p>
+              <p style={{ fontSize: '0.68rem', color: '#94A3B8', margin: '0.125rem 0 0', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>{s.label}</p>
+            </div>
+          ))}
+        </div>
+      </GlassSection>
+
+      <div className="two-col-grid">
+        {/* Search Click-Through Rate */}
+        <GlassSection>
+          <SectionTitle sub="Search → product view conversion (7d)">Search CTR</SectionTitle>
+          {data.searchCTR.length === 0 ? (
+            <p style={{ color: '#94A3B8', fontSize: '0.8125rem', textAlign: 'center', padding: '1rem' }}>No search CTR data yet</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+              {data.searchCTR.slice(0, 10).map((s, i) => (
+                <div key={s.query} style={{
+                  display: 'flex', alignItems: 'center', gap: '0.5rem',
+                  padding: '0.375rem 0.5rem', borderRadius: '0.375rem',
+                  background: i % 2 === 0 ? 'rgba(248,250,252,0.6)' : 'transparent',
+                }}>
+                  <span style={{ flex: 1, fontSize: '0.78rem', color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {s.query}
+                  </span>
+                  <span style={{ fontSize: '0.68rem', color: '#94A3B8', whiteSpace: 'nowrap' }}>
+                    {s.searches} search{s.searches !== 1 ? 'es' : ''} → {s.clicks} click{s.clicks !== 1 ? 's' : ''}
+                  </span>
+                  <span style={{
+                    fontSize: '0.72rem', fontWeight: 700, fontFamily: 'Space Grotesk',
+                    color: s.ctr > 20 ? '#059669' : s.ctr > 5 ? '#D97706' : '#E11D48',
+                    minWidth: 40, textAlign: 'right',
+                  }}>
+                    {s.ctr}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </GlassSection>
+
+        {/* Filter Usage */}
+        <GlassSection>
+          <SectionTitle sub={`${data.filterUsage.totalFilterEvents} filter interactions (7d)`}>Filter Usage</SectionTitle>
+          {data.filterUsage.makes.length === 0 && data.filterUsage.categories.length === 0 ? (
+            <p style={{ color: '#94A3B8', fontSize: '0.8125rem', textAlign: 'center', padding: '1rem' }}>No filter events yet</p>
+          ) : (
+            <>
+              {data.filterUsage.makes.length > 0 && (
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <p style={{ fontSize: '0.68rem', fontWeight: 700, color: '#94A3B8', marginBottom: '0.375rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Top Makes</p>
+                  {data.filterUsage.makes.slice(0, 8).map(m => (
+                    <div key={m.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.2rem 0' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#0F172A' }}>{m.name}</span>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4F46E5', fontFamily: 'Space Grotesk' }}>{m.count}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {data.filterUsage.categories.length > 0 && (
+                <div>
+                  <p style={{ fontSize: '0.68rem', fontWeight: 700, color: '#94A3B8', marginBottom: '0.375rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Top Categories</p>
+                  {data.filterUsage.categories.slice(0, 8).map(c => (
+                    <div key={c.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.2rem 0' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#0F172A' }}>{c.name}</span>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#7C3AED', fontFamily: 'Space Grotesk' }}>{c.count}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </GlassSection>
+      </div>
+
+      <div className="two-col-grid">
+        {/* Vendor Page Views */}
+        <GlassSection>
+          <SectionTitle sub="Most viewed vendor profiles (7d)">Vendor Views</SectionTitle>
+          {data.vendorViews.length === 0 ? (
+            <p style={{ color: '#94A3B8', fontSize: '0.8125rem', textAlign: 'center', padding: '1rem' }}>No vendor view events yet</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              {data.vendorViews.slice(0, 10).map((v, i) => (
+                <div key={v.name} style={{
+                  display: 'flex', alignItems: 'center', gap: '0.5rem',
+                  padding: '0.375rem 0.5rem', borderRadius: '0.375rem',
+                  background: i % 2 === 0 ? 'rgba(248,250,252,0.6)' : 'transparent',
+                }}>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#94A3B8', width: '1.5rem', textAlign: 'center' }}>{i + 1}</span>
+                  <span style={{ flex: 1, fontSize: '0.78rem', color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.name}</span>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#8B5CF6', fontFamily: 'Space Grotesk' }}>{v.count}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </GlassSection>
+
+        {/* Session Duration */}
+        <GlassSection>
+          <SectionTitle sub="Average time on site (14d)">Session Duration</SectionTitle>
+          {data.sessionDurations.length === 0 ? (
+            <p style={{ color: '#94A3B8', fontSize: '0.8125rem', textAlign: 'center', padding: '1rem' }}>No session end events yet</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              {data.sessionDurations.map(d => (
+                <div key={d.day} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '0.3rem 0.5rem', borderRadius: '0.375rem',
+                  background: 'rgba(248,250,252,0.6)',
+                }}>
+                  <span style={{ fontSize: '0.75rem', color: '#64748B' }}>{d.day}</span>
+                  <div style={{ display: 'flex', gap: '0.75rem' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#0F172A' }}>
+                      <strong style={{ fontFamily: 'Space Grotesk', color: '#4F46E5' }}>{d.avgSessionSec}s</strong> avg
+                    </span>
+                    <span style={{ fontSize: '0.75rem', color: '#0F172A' }}>
+                      <strong style={{ fontFamily: 'Space Grotesk', color: '#7C3AED' }}>{d.avgPages}</strong> pages
+                    </span>
+                    <span style={{ fontSize: '0.68rem', color: '#94A3B8' }}>{d.sessions} sessions</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </GlassSection>
+      </div>
+    </div>
+  );
+}
+
 // ─── Supply-Demand Gap Tab ───
 
 function SupplyDemandTab() {
@@ -1136,7 +1298,7 @@ export function Analytics() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
         {/* Tab switcher */}
         <div style={{ display: 'flex', background: 'rgba(79,70,229,0.07)', borderRadius: '0.875rem', padding: '0.25rem', gap: '0.125rem' }}>
-          {(['users', 'products', 'traffic', 'gaps', 'economics'] as Tab[]).map(t => (
+          {(['users', 'products', 'traffic', 'engagement', 'gaps', 'economics'] as Tab[]).map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
               padding: '0.5rem 0.875rem', borderRadius: '0.625rem', border: 'none', cursor: 'pointer',
               background: tab === t ? '#fff' : 'transparent',
@@ -1145,7 +1307,7 @@ export function Analytics() {
               boxShadow: tab === t ? '0 1px 6px rgba(79,70,229,0.15)' : 'none',
               transition: 'all 0.15s', fontFamily: 'Plus Jakarta Sans',
             }}>
-              {t === 'users' ? '👤 Users' : t === 'products' ? '📦 Products' : t === 'traffic' ? '🌐 Traffic' : t === 'gaps' ? '🔍 Supply Gaps' : '💰 Economics'}
+              {t === 'users' ? '👤 Users' : t === 'products' ? '📦 Products' : t === 'traffic' ? '🌐 Traffic' : t === 'engagement' ? '📊 Engagement' : t === 'gaps' ? '🔍 Supply Gaps' : '💰 Economics'}
             </button>
           ))}
         </div>
@@ -1173,6 +1335,7 @@ export function Analytics() {
       {tab === 'users' && <UsersTab onSelectUser={setSelectedUserId} />}
       {tab === 'products' && <ProductsTab timeRange={timeRange} />}
       {tab === 'traffic' && <TrafficTab />}
+      {tab === 'engagement' && <EngagementTab />}
       {tab === 'gaps' && <SupplyDemandTab />}
       {tab === 'economics' && <UnitEconomicsTab />}
     </div>

@@ -1800,13 +1800,13 @@ router.get("/api/analytics/supply-demand", async (_req, res) => {
       .eq("eventType", "search")
       .gte("createdAt", sevenDaysAgo);
 
-    const queryMap = new Map<string, { count: number; results: number; hasResultCount: boolean }>();
+    const queryMap = new Map<string, { count: number; results: number; hasResultCount: boolean; topMake: string | null; topCategory: string | null }>();
     for (const e of searchEvents || []) {
       const meta = e.metadata as Record<string, unknown> | null;
       if (!meta?.query) continue;
       const q = (meta.query as string).toLowerCase().trim();
       if (q.length < 2) continue;
-      const existing = queryMap.get(q) || { count: 0, results: 0, hasResultCount: false };
+      const existing = queryMap.get(q) || { count: 0, results: 0, hasResultCount: false, topMake: null, topCategory: null };
       existing.count++;
       // Only treat as zero-result if the metadata explicitly includes a result count
       const rc = meta.resultCount ?? meta.resultsCount ?? meta.results ?? undefined;
@@ -1814,6 +1814,9 @@ router.get("/api/analytics/supply-demand", async (_req, res) => {
         existing.hasResultCount = true;
         existing.results = Math.max(existing.results, rc as number);
       }
+      // Capture filter context from search events
+      if (meta.make && !existing.topMake) existing.topMake = meta.make as string;
+      if ((meta.categoryId || meta.category) && !existing.topCategory) existing.topCategory = (meta.categoryId ?? meta.category) as string;
       queryMap.set(q, existing);
     }
 
@@ -1823,7 +1826,7 @@ router.get("/api/analytics/supply-demand", async (_req, res) => {
       .filter(([, d]) => d.hasResultCount && d.results === 0)
       .sort((a, b) => b[1].count - a[1].count)
       .slice(0, 30)
-      .map(([query, d]) => ({ query, searchCount: d.count }));
+      .map(([query, d]) => ({ query, searchCount: d.count, make: d.topMake, category: d.topCategory }));
 
     // Count queries with confirmed result counts for accurate zero-result rate
     const queriesWithResultCount = [...queryMap.values()].filter(d => d.hasResultCount);
@@ -2153,6 +2156,126 @@ router.post("/api/track", express.text({ type: "text/plain" }), async (req, res)
   } catch (error) {
     safeLogError("Track endpoint error", error);
     res.status(500).json({ error: "Failed to track" });
+  }
+});
+
+// ─── Engagement Analytics (new marketplace event types) ─────────────────────
+
+router.get("/api/analytics/engagement", async (_req, res) => {
+  if (dbUnavailable(res)) return;
+  try {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+    const fourteenDaysAgo = new Date(Date.now() - 14 * 86400000).toISOString();
+
+    // Fetch all relevant events in parallel
+    const [
+      { data: searchEvents },
+      { data: viewEvents },
+      { data: filterEvents },
+      { data: leaveEvents },
+      { data: vendorViewEvents },
+      { data: waTapEvents },
+    ] = await Promise.all([
+      supabase!.from("analytics_events").select("metadata").eq("eventType", "search").gte("createdAt", sevenDaysAgo),
+      supabase!.from("analytics_events").select("metadata").eq("eventType", "product_view").gte("createdAt", sevenDaysAgo),
+      supabase!.from("analytics_events").select("metadata").eq("eventType", "filter_used").gte("createdAt", sevenDaysAgo),
+      supabase!.from("analytics_events").select("metadata, createdAt").eq("eventType", "page_leave").gte("createdAt", fourteenDaysAgo),
+      supabase!.from("analytics_events").select("metadata").eq("eventType", "vendor_view").gte("createdAt", sevenDaysAgo),
+      supabase!.from("analytics_events").select("metadata").eq("eventType", "whatsapp_tap").gte("createdAt", sevenDaysAgo),
+    ]);
+
+    // 1. Filter usage — what makes/categories are people filtering by
+    const filterMakes = new Map<string, number>();
+    const filterCategories = new Map<string, number>();
+    const filterConditions = new Map<string, number>();
+    for (const e of filterEvents || []) {
+      const meta = e.metadata as Record<string, unknown> | null;
+      if (!meta) continue;
+      const make = meta.make as string;
+      if (make) filterMakes.set(make, (filterMakes.get(make) || 0) + 1);
+      const cat = (meta.category ?? meta.categoryId) as string;
+      if (cat) filterCategories.set(cat, (filterCategories.get(cat) || 0) + 1);
+      const condition = meta.condition as string;
+      if (condition) filterConditions.set(condition, (filterConditions.get(condition) || 0) + 1);
+    }
+
+    // 2. Search → click-through rate
+    const searchCounts = new Map<string, number>();
+    for (const e of searchEvents || []) {
+      const meta = e.metadata as Record<string, unknown> | null;
+      const q = (meta?.query as string)?.toLowerCase()?.trim();
+      if (q && q.length >= 2) searchCounts.set(q, (searchCounts.get(q) || 0) + 1);
+    }
+
+    const clicksBySearch = new Map<string, number>();
+    for (const e of viewEvents || []) {
+      const meta = e.metadata as Record<string, unknown> | null;
+      const fromSearch = (meta?.fromSearch as string)?.toLowerCase()?.trim();
+      if (fromSearch) clicksBySearch.set(fromSearch, (clicksBySearch.get(fromSearch) || 0) + 1);
+    }
+
+    const searchCTR = [...searchCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20)
+      .map(([query, searches]) => {
+        const clicks = clicksBySearch.get(query) || 0;
+        return { query, searches, clicks, ctr: searches > 0 ? Math.round((clicks / searches) * 1000) / 10 : 0 };
+      });
+
+    // 3. WhatsApp conversion funnel (7d)
+    const totalViews = (viewEvents || []).length;
+    const totalWaTaps = (waTapEvents || []).length;
+    const tapRate = totalViews > 0 ? Math.round((totalWaTaps / totalViews) * 1000) / 10 : 0;
+
+    // 4. Average session duration (14d, by day)
+    const sessionByDay = new Map<string, { totalMs: number; totalPages: number; count: number }>();
+    for (const e of leaveEvents || []) {
+      const meta = e.metadata as Record<string, unknown> | null;
+      if (!meta || meta.action !== 'session_end') continue;
+      const day = (e.createdAt as string).slice(0, 10);
+      const existing = sessionByDay.get(day) || { totalMs: 0, totalPages: 0, count: 0 };
+      existing.totalMs += (meta.sessionDurationMs as number) || 0;
+      existing.totalPages += (meta.pagesViewed as number) || 0;
+      existing.count++;
+      sessionByDay.set(day, existing);
+    }
+    const sessionDurations = [...sessionByDay.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([day, d]) => ({
+        day,
+        avgSessionSec: d.count > 0 ? Math.round(d.totalMs / d.count / 1000) : 0,
+        avgPages: d.count > 0 ? Math.round((d.totalPages / d.count) * 10) / 10 : 0,
+        sessions: d.count,
+      }));
+
+    // 5. Vendor page views
+    const vendorViews = new Map<string, number>();
+    for (const e of vendorViewEvents || []) {
+      const meta = e.metadata as Record<string, unknown> | null;
+      const name = (meta?.vendorName ?? meta?.businessName ?? `Vendor ${meta?.vendorId ?? '?'}`) as string;
+      vendorViews.set(name, (vendorViews.get(name) || 0) + 1);
+    }
+
+    const sorted = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
+
+    res.json({
+      source: "database",
+      data: {
+        filterUsage: {
+          makes: sorted(filterMakes).slice(0, 15),
+          categories: sorted(filterCategories).slice(0, 15),
+          conditions: sorted(filterConditions),
+          totalFilterEvents: (filterEvents || []).length,
+        },
+        searchCTR,
+        whatsappFunnel: { views: totalViews, taps: totalWaTaps, tapRate },
+        sessionDurations,
+        vendorViews: sorted(vendorViews).slice(0, 20),
+      },
+    });
+  } catch (error) {
+    safeLogError("Engagement analytics error", error);
+    res.status(500).json({ error: "Database query failed" });
   }
 });
 
