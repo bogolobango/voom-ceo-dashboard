@@ -4,7 +4,7 @@
  * Mobile-first responsive: single column on mobile, multi-column on desktop
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { DashboardKPIs, Vendor, BriefingData } from '../../lib/voomApi';
 
 // ─── Tier pricing (GH₵/month) ───
@@ -16,7 +16,8 @@ const TIER_PRICES: Record<string, number> = {
   enterprise: 2000,
 };
 
-const USD_RATE = 14.5;
+// GH₵ per 1 USD. Override via VITE_USD_RATE env var. Fallback: 14.5 (Apr 2026 approximate).
+const USD_RATE = parseFloat(import.meta.env.VITE_USD_RATE || '14.5');
 
 const TIER_COLORS: Record<string, string> = {
   free: '#94A3B8',
@@ -83,6 +84,82 @@ function daysUntil(dateStr: string): number {
 }
 
 // ─── Main Component ───
+
+function AlertsSection({ alerts }: { alerts: { type: string; label: string; detail: string }[] }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const PREVIEW_COUNT = 3;
+  const shown = collapsed ? [] : alerts;
+  const urgentCount = alerts.filter(a => a.type === 'urgent').length;
+
+  return (
+    <GlassSection>
+      <button
+        onClick={() => setCollapsed(c => !c)}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          width: '100%', background: 'none', border: 'none', cursor: 'pointer',
+          padding: 0, marginBottom: collapsed ? 0 : '0.75rem',
+        }}
+      >
+        <div>
+          <h2 style={{ fontFamily: 'Plus Jakarta Sans, sans-serif', fontSize: '0.9375rem', fontWeight: 700, color: '#0F172A', margin: 0, textAlign: 'left' }}>
+            Alerts & Actions
+          </h2>
+          <p style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '0.125rem', textAlign: 'left' }}>
+            {alerts.length} actionable item{alerts.length > 1 ? 's' : ''}
+            {urgentCount > 0 ? ` (${urgentCount} urgent)` : ''}
+          </p>
+        </div>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '0.5rem',
+        }}>
+          {collapsed && (
+            <span style={{
+              fontSize: '0.68rem', fontWeight: 600, padding: '0.15rem 0.5rem', borderRadius: 999,
+              background: urgentCount > 0 ? 'rgba(225,29,72,0.08)' : 'rgba(217,119,6,0.08)',
+              color: urgentCount > 0 ? '#E11D48' : '#D97706',
+            }}>
+              {alerts.length}
+            </span>
+          )}
+          <svg
+            width="16" height="16" viewBox="0 0 24 24" fill="none"
+            stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+            style={{ transition: 'transform 0.2s ease', transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </div>
+      </button>
+
+      {!collapsed && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {shown.map((alert, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
+              padding: '0.625rem 0.75rem', borderRadius: '0.75rem',
+              background: alert.type === 'urgent' ? 'rgba(225,29,72,0.04)' : 'rgba(217,119,6,0.04)',
+              borderLeft: `3px solid ${alert.type === 'urgent' ? '#E11D48' : '#D97706'}`,
+            }}>
+              <div style={{
+                width: 8, height: 8, borderRadius: '50%', flexShrink: 0, marginTop: '0.3rem',
+                background: alert.type === 'urgent' ? '#E11D48' : '#D97706',
+              }} />
+              <div style={{ minWidth: 0 }}>
+                <p style={{ fontSize: '0.8rem', fontWeight: 600, color: '#0F172A', margin: 0 }}>
+                  {alert.label}
+                </p>
+                <p style={{ fontSize: '0.7rem', color: '#64748B', margin: '0.125rem 0 0' }}>
+                  {alert.detail}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </GlassSection>
+  );
+}
 
 export function MorningBriefing({ briefingData, vendors, kpis }: MorningBriefingProps) {
   const {
@@ -219,41 +296,7 @@ export function MorningBriefing({ briefingData, vendors, kpis }: MorningBriefing
           2. ALERTS & ACTIONS
          ═══════════════════════════════════════════════════════ */}
       {alerts.length > 0 && (
-        <GlassSection>
-          <SectionTitle sub={`${alerts.length} actionable item${alerts.length > 1 ? 's' : ''}`}>
-            Alerts & Actions
-          </SectionTitle>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {alerts.map((alert, i) => (
-              <div key={i} style={{
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: '0.75rem',
-                padding: '0.625rem 0.75rem',
-                borderRadius: '0.75rem',
-                background: alert.type === 'urgent' ? 'rgba(225,29,72,0.04)' : 'rgba(217,119,6,0.04)',
-                borderLeft: `3px solid ${alert.type === 'urgent' ? '#E11D48' : '#D97706'}`,
-              }}>
-                <div style={{
-                  width: 8, height: 8, borderRadius: '50%', flexShrink: 0, marginTop: '0.3rem',
-                  background: alert.type === 'urgent' ? '#E11D48' : '#D97706',
-                }} />
-                <div style={{ minWidth: 0 }}>
-                  <p style={{
-                    fontSize: '0.8rem', fontWeight: 600, color: '#0F172A', margin: 0,
-                  }}>
-                    {alert.label}
-                  </p>
-                  <p style={{
-                    fontSize: '0.7rem', color: '#64748B', margin: '0.125rem 0 0',
-                  }}>
-                    {alert.detail}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </GlassSection>
+        <AlertsSection alerts={alerts} />
       )}
 
       {/* ═══════════════════════════════════════════════════════

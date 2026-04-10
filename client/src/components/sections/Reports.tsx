@@ -217,8 +217,9 @@ ${nextThirtyDays || '[Add plans before exporting]'}
 
 EXPANSION
 PawaPay status: Not started
-Markets accessible: 20 countries, $23.2B TAM
-Africa auto aftermarket growing 7.1% CAGR to $37.6B by 2032
+Note: TAM/SAM figures below are estimates — verify before using in investor materials.
+Markets accessible via PawaPay: 20 countries
+Africa auto aftermarket: ~$23B (estimated, needs source verification)
 
 ---
 Generated from VOOM CEO Dashboard · ${now.toLocaleDateString('en-GB')}`;
