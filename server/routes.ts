@@ -73,9 +73,10 @@ router.get("/api/stats", async (_req, res) => {
 
     const { data: revenueData } = await supabase!
       .from("orders")
-      .select("totalAmount");
+      .select("totalAmount, commissionAmount");
 
     const totalRevenue = (revenueData || []).reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0);
+    const totalCommission = (revenueData || []).reduce((sum: number, o: any) => sum + (Number(o.commissionAmount) || 0), 0);
 
     const result = {
       source: "database",
@@ -87,7 +88,7 @@ router.get("/api/stats", async (_req, res) => {
       totalPartRequests: totalPartRequests ?? 0,
       pendingVendors: pendingVendors ?? 0,
       totalRevenue: String(totalRevenue),
-      totalCommission: "0",
+      totalCommission: String(totalCommission),
     };
     cache.set(CACHE_KEYS.stats, result);
     res.json(result);
@@ -434,10 +435,12 @@ router.get("/api/growth", async (_req, res) => {
 
   try {
     const [{ data: vendorsRaw }, { data: ordersRaw }, { data: productsRaw }, { data: tierRaw }] = await Promise.all([
-      supabase!.from("vendors").select("createdAt, tier"),
-      supabase!.from("orders").select("createdAt, totalAmount"),
+      // Only count approved vendors for growth (pending/rejected inflate the number)
+      supabase!.from("vendors").select("createdAt, tier").eq("status", "approved"),
+      // Only count non-cancelled orders for growth
+      supabase!.from("orders").select("createdAt, totalAmount").neq("status", "cancelled"),
       supabase!.from("products").select("createdAt"),
-      supabase!.from("vendors").select("tier"),
+      supabase!.from("vendors").select("tier").eq("status", "approved"),
     ]);
 
     const monthKey = (d: string) => d.slice(0, 7);
@@ -506,12 +509,11 @@ router.get("/api/health", async (_req, res) => {
 
 // ─── Morning Briefing ───────────────────────────────────────
 
-const TIER_PRICES: Record<string, number> = {
-  starter: 100,
-  pro: 200,
-  business: 800,
-  enterprise: 2000,
-};
+// Monthly subscription prices in GH₵. Override via TIER_PRICES_JSON env var.
+// Example: TIER_PRICES_JSON='{"starter":150,"pro":250,"business":900,"enterprise":2500}'
+const TIER_PRICES: Record<string, number> = process.env.TIER_PRICES_JSON
+  ? JSON.parse(process.env.TIER_PRICES_JSON)
+  : { starter: 100, pro: 200, business: 800, enterprise: 2000 };
 
 router.get("/api/briefing", async (_req, res) => {
   if (dbUnavailable(res)) return;

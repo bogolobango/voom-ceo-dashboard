@@ -16,7 +16,8 @@ const TIER_PRICES: Record<string, number> = {
   enterprise: 2000,
 };
 
-const USD_RATE = 14.5;
+// GH₵ per 1 USD. Override via VITE_USD_RATE env var. Fallback: 14.5 (Apr 2026 approximate).
+const USD_RATE = parseFloat(import.meta.env.VITE_USD_RATE || '14.5');
 
 const TIER_COLORS: Record<string, string> = {
   free: '#94A3B8',

@@ -515,15 +515,15 @@ function computeMoMGrowth(data?: { month: string; count: number }[]): number {
   // Filter out the current (incomplete) month
   const complete = sorted.filter(d => d.month < currentMonth);
   if (complete.length < 2) {
-    // Fall back to raw comparison if not enough complete months
     const last = sorted[sorted.length - 1].count;
     const prev = sorted[sorted.length - 2].count;
-    if (prev === 0) return last > 0 ? 100 : 0;
+    // Don't claim "100% growth" when starting from zero — it's meaningless
+    if (prev === 0) return 0;
     return ((last - prev) / prev) * 100;
   }
   const current = complete[complete.length - 1].count;
   const previous = complete[complete.length - 2].count;
-  if (previous === 0) return current > 0 ? 100 : 0;
+  if (previous === 0) return 0; // No meaningful growth rate from zero base
   return ((current - previous) / previous) * 100;
 }
 
@@ -536,12 +536,12 @@ function computeRevenueMoMGrowth(data?: { month: string; count: number; revenue:
   if (complete.length < 2) {
     const last = sorted[sorted.length - 1].revenue;
     const prev = sorted[sorted.length - 2].revenue;
-    if (prev === 0) return last > 0 ? 100 : 0;
+    if (prev === 0) return 0;
     return ((last - prev) / prev) * 100;
   }
   const current = complete[complete.length - 1].revenue;
   const previous = complete[complete.length - 2].revenue;
-  if (previous === 0) return current > 0 ? 100 : 0;
+  if (previous === 0) return 0;
   return ((current - previous) / previous) * 100;
 }
 

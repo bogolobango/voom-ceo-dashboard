@@ -108,7 +108,7 @@ export function Revenue({ orders, kpis, revenueData }: RevenueProps) {
       {/* KPI Row */}
       <div className="four-col-grid">
         <MetricCard label="Total GMV" value={kpis.totalGMV} format="cedis" trend={kpis.gmvGrowth} variant="emerald" delay={0} />
-        <MetricCard label="Commission Earned" value={kpis.totalCommission} format="cedis" variant="indigo" delay={1} subtitle="12% default rate" />
+        <MetricCard label="Commission Earned" value={kpis.totalCommission} format="cedis" variant="indigo" delay={1} subtitle="From order data (rate varies)" />
         <MetricCard label="Avg Order Value" value={kpis.avgOrderValue} format="cedis" variant="indigo" delay={2} />
         <MetricCard label="Completion Rate" value={kpis.orderCompletionRate} format="percent" variant="emerald" delay={3} />
       </div>

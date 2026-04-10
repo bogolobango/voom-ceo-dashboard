@@ -106,7 +106,7 @@ export function Overview({ kpis, orders, vendors, products, partRequests, loadin
         <MetricCard label="Orders" value={kpis.totalOrders} trend={kpis.orderGrowth}
           icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>}
           variant="emerald" delay={2} subtitle={`${kpis.completedOrders} delivered`} />
-        <MetricCard label="GMV (30d)" value={kpis.totalGMV} format="cedis" trend={kpis.gmvGrowth}
+        <MetricCard label="GMV (All time)" value={kpis.totalGMV} format="cedis" trend={kpis.gmvGrowth}
           icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>}
           variant="emerald" delay={3} subtitle={`Avg GH₵ ${kpis.avgOrderValue.toFixed(0)}/order`} />
         <MetricCard label="Part Requests" value={kpis.totalPartRequests}
