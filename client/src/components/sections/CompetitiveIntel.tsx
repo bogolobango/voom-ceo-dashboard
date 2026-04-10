@@ -39,10 +39,10 @@ const JIJI_TIERS = [
 
 /* ── Competitor notes ── */
 const COMPETITORS = [
-  { name: 'Jiji.com.gh (Auto Parts)', status: 'Active — dominant classifieds platform', risk: 'high' as const, lastChecked: 'Mar 2026' },
-  { name: 'voomgh.com', status: 'Different company — car marketplace / rentals', risk: 'low' as const, lastChecked: 'Mar 2026' },
-  { name: 'Finduy', status: 'Monitoring — similar auto parts space', risk: 'medium' as const, lastChecked: 'Mar 2026' },
-  { name: 'Tonaton Ghana', status: 'Merged with Jiji — redirects to Jiji', risk: 'low' as const, lastChecked: 'Mar 2026' },
+  { name: 'Jiji.com.gh (Auto Parts)', status: 'Active — dominant classifieds platform', risk: 'high' as const, lastChecked: 'Needs re-check' },
+  { name: 'voomgh.com', status: 'Different company — car marketplace / rentals', risk: 'low' as const, lastChecked: 'Needs re-check' },
+  { name: 'Finduy', status: 'Monitoring — similar auto parts space', risk: 'medium' as const, lastChecked: 'Needs re-check' },
+  { name: 'Tonaton Ghana', status: 'Merged with Jiji — redirects to Jiji', risk: 'low' as const, lastChecked: 'Needs re-check' },
 ];
 
 const RISK_STYLES = {
@@ -51,7 +51,7 @@ const RISK_STYLES = {
   low: { bg: 'rgba(5,150,105,0.1)', color: '#059669', border: 'rgba(5,150,105,0.15)' },
 };
 
-/** Estimated total vendor count in Abossey Okai market */
+/** Estimated total vendor count in Abossey Okai market — unsourced estimate, needs primary research */
 const ABOSSEY_OKAI_VENDOR_COUNT = 15_000;
 
 export function CompetitiveIntel({ vendors, kpis }: CompetitiveIntelProps) {
@@ -74,10 +74,10 @@ export function CompetitiveIntel({ vendors, kpis }: CompetitiveIntelProps) {
       {/* ── Market Data Metrics ── */}
       <div className="four-col-grid">
         {[
-          { label: 'Ghana Vehicles', value: '2.1M', sub: 'Registered nationwide', color: '#4F46E5' },
-          { label: 'Abossey Okai', value: `${ABOSSEY_OKAI_VENDOR_COUNT.toLocaleString()}+`, sub: 'Vendor count', color: '#7C3AED' },
+          { label: 'Ghana Vehicles', value: '~2.1M', sub: 'Estimate — needs verification', color: '#4F46E5' },
+          { label: 'Abossey Okai', value: `~${ABOSSEY_OKAI_VENDOR_COUNT.toLocaleString()}`, sub: 'Estimate — needs field research', color: '#7C3AED' },
           { label: 'VOOM Active', value: String(activeVendors), sub: 'Approved vendors', color: '#059669' },
-          { label: 'Penetration', value: `${marketPenetration}%`, sub: 'Of Abossey Okai market', color: '#D97706' },
+          { label: 'Penetration', value: `${marketPenetration}%`, sub: 'Estimate (denominator unverified)', color: '#D97706' },
         ].map(item => (
           <div key={item.label} className="glass-card" style={{ padding: '1rem', textAlign: 'center' }}>
             <p style={{
@@ -96,7 +96,7 @@ export function CompetitiveIntel({ vendors, kpis }: CompetitiveIntelProps) {
 
       {/* ── Jiji Pricing Comparison ── */}
       <GlassSection>
-        <SectionTitle sub="Jiji/Tonaton Ghana tiers vs VOOM tiers · GH₵/month">Competitor Pricing</SectionTitle>
+        <SectionTitle sub="Jiji/Tonaton Ghana tiers vs VOOM tiers · GH₵/month · Last verified: needs update">Competitor Pricing</SectionTitle>
 
         {/* Mobile: card layout */}
         <div className="competitor-mobile-cards" style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>

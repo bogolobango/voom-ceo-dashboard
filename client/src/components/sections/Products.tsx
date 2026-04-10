@@ -55,8 +55,8 @@ export function Products({ kpis, products }: ProductsProps) {
 
   const outOfStock = useMemo(() => products.filter(p => p.status === 'out_of_stock' || p.quantity === 0).length, [products]);
   const avgViews = useMemo(() => {
-    const withViews = products.filter(p => p.views != null);
-    return withViews.length > 0 ? Math.round(withViews.reduce((s, p) => s + (p.views || 0), 0) / withViews.length) : 0;
+    // Include ALL products (treat null views as 0, not excluded)
+    return products.length > 0 ? Math.round(products.reduce((s, p) => s + (p.views || 0), 0) / products.length) : 0;
   }, [products]);
   const oemCount = useMemo(() => products.filter(p => p.oemPartNumber).length, [products]);
   const oemPct = products.length > 0 ? Math.round((oemCount / products.length) * 100) : 0;

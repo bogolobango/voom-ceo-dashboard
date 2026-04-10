@@ -101,13 +101,14 @@ export function Growth({ kpis, growthData, vendors }: GrowthProps) {
     }));
   }, [vendors]);
 
+  // Raw counts — no multipliers, no fake scaling. Shows actual numbers.
   const radarData = useMemo(() => [
-    { metric: 'Supply', value: Math.min(100, kpis.totalProducts) },
-    { metric: 'Demand', value: Math.min(100, kpis.totalPartRequests * 2) },
-    { metric: 'GMV', value: Math.min(100, Math.round(kpis.totalGMV / 1000)) },
-    { metric: 'Vendors', value: Math.min(100, kpis.totalVendors * 3) },
-    { metric: 'Completion', value: Math.round(kpis.orderCompletionRate) },
-    { metric: 'Categories', value: Math.min(100, kpis.totalCategories * 5) },
+    { metric: 'Products', value: kpis.totalProducts },
+    { metric: 'Part Requests', value: kpis.totalPartRequests },
+    { metric: 'Vendors', value: kpis.totalVendors },
+    { metric: 'Orders', value: kpis.totalOrders },
+    { metric: 'Categories', value: kpis.totalCategories },
+    { metric: 'Completion %', value: Math.round(kpis.orderCompletionRate) },
   ], [kpis]);
 
   const startupHealth = [
@@ -182,7 +183,7 @@ export function Growth({ kpis, growthData, vendors }: GrowthProps) {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           <GlassSection>
-            <SectionTitle sub="Marketplace maturity score">Platform Radar</SectionTitle>
+            <SectionTitle sub="Raw counts — not scaled or weighted">Platform Snapshot</SectionTitle>
             <ResponsiveContainer width="100%" height={200}>
               <RadarChart data={radarData}>
                 <PolarGrid stroke="rgba(79,70,229,0.1)" />
@@ -220,20 +221,21 @@ export function Growth({ kpis, growthData, vendors }: GrowthProps) {
 
       {/* Milestones */}
       <GlassSection>
-        <SectionTitle sub="Launch milestones">Roadmap Progress</SectionTitle>
+        <SectionTitle sub="Auto-computed from live data where possible">Roadmap Progress</SectionTitle>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {[
+            // Past milestones (manually confirmed, not auto-computable)
             { milestone: 'Marketplace MVP launched', date: 'Oct 2025', done: true },
             { milestone: 'CEO Dashboard connected to live DB', date: 'Mar 2026', done: true },
-            { milestone: 'First vendor signed (Ghana Card submitted)', date: 'Mar 2026', done: true },
-            { milestone: 'Real vendor products listed on site', date: 'Mar 2026', done: true },
-            { milestone: '1.2K real buyers visiting (GA4 confirmed)', date: 'Mar 2026', done: true },
-            { milestone: 'Pitch deck ready, investor conversations started', date: 'Mar 2026', done: true },
-            { milestone: '30-50 vendors contacted via WhatsApp', date: 'Mar 2026', done: true },
-            { milestone: 'First paid subscriber (revenue > $0)', date: 'TBD', done: false },
+            // Auto-computed milestones from kpis
+            { milestone: `First vendor approved (${kpis.approvedVendors} approved)`, date: kpis.approvedVendors > 0 ? 'Achieved' : 'TBD', done: kpis.approvedVendors > 0 },
+            { milestone: `Products listed on site (${kpis.totalProducts} listed)`, date: kpis.totalProducts > 0 ? 'Achieved' : 'TBD', done: kpis.totalProducts > 0 },
+            { milestone: `First order placed (${kpis.totalOrders} total)`, date: kpis.totalOrders > 0 ? 'Achieved' : 'TBD', done: kpis.totalOrders > 0 },
+            { milestone: `First paid subscriber (${kpis.totalGMV > 0 ? 'Revenue > $0' : 'Pre-revenue'})`, date: kpis.totalGMV > 0 ? 'Achieved' : 'TBD', done: kpis.totalGMV > 0 },
+            { milestone: `50 registered vendors (${kpis.totalVendors} registered)`, date: kpis.totalVendors >= 50 ? 'Achieved' : 'TBD', done: kpis.totalVendors >= 50 },
+            { milestone: `100 products listed (${kpis.totalProducts} listed)`, date: kpis.totalProducts >= 100 ? 'Achieved' : 'TBD', done: kpis.totalProducts >= 100 },
+            { milestone: `500 products listed (${kpis.totalProducts} listed)`, date: kpis.totalProducts >= 500 ? 'Achieved' : 'TBD', done: kpis.totalProducts >= 500 },
             { milestone: 'PawaPay integration live', date: 'TBD', done: false },
-            { milestone: '50 registered vendors', date: 'TBD', done: false },
-            { milestone: 'GH₵ 1K MRR milestone', date: 'TBD', done: false },
           ].map((item, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
               <div style={{

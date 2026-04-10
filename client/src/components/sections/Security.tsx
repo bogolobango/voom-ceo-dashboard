@@ -32,12 +32,15 @@ interface HealthStatus {
   error?: string;
 }
 
+// NOTE: This checklist is manually maintained. Items marked "ok" reflect
+// code-level configuration, NOT runtime verification. A proper security
+// audit should validate each item independently.
 const SECURITY_CHECKLIST = [
-  { label: 'Rate limiting enabled (200 req/15min)', ok: true },
-  { label: 'Helmet security headers active', ok: true },
-  { label: 'CORS configured', ok: true },
-  { label: 'PII log redaction active', ok: true },
-  { label: 'SSL/TLS on database connection', ok: true },
+  { label: 'Rate limiting configured in code (200 req/15min)', ok: true },
+  { label: 'Helmet security headers configured in code', ok: true },
+  { label: 'CORS configured in code', ok: true },
+  { label: 'PII log redaction configured in code', ok: true },
+  { label: 'SSL/TLS on database connection (Supabase default)', ok: true },
   { label: 'API key authentication required in production', ok: true },
   { label: 'No WAF configured', ok: false, warning: 'Web Application Firewall not detected' },
   { label: 'No automated backups verified', ok: false, warning: 'Backup verification not configured' },
@@ -243,7 +246,7 @@ export function Security({ kpis, dataSource = 'offline' }: SecurityProps) {
 
       {/* -- Security Checklist -- */}
       <GlassSection>
-        <SectionTitle sub={`${passCount} passed · ${warnCount} warning${warnCount !== 1 ? 's' : ''}`}>
+        <SectionTitle sub={`${passCount} configured · ${warnCount} warning${warnCount !== 1 ? 's' : ''} · Based on code review, not runtime verification`}>
           Security Checklist
         </SectionTitle>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
