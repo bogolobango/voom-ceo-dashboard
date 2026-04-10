@@ -1029,6 +1029,28 @@ export async function fetchTrafficAnalytics(): Promise<TrafficData | null> {
   return json?.data ?? null;
 }
 
+// ─── Engagement Analytics ──────────────────────────────────────
+
+export interface EngagementData {
+  filterUsage: {
+    makes: NameCount[];
+    categories: NameCount[];
+    conditions: NameCount[];
+    totalFilterEvents: number;
+  };
+  searchCTR: { query: string; searches: number; clicks: number; ctr: number }[];
+  whatsappFunnel: { views: number; taps: number; tapRate: number };
+  sessionDurations: { day: string; avgSessionSec: number; avgPages: number; sessions: number }[];
+  vendorViews: NameCount[];
+}
+
+export async function fetchEngagementAnalytics(): Promise<EngagementData | null> {
+  const res = await fetch('/api/analytics/engagement');
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json?.data ?? null;
+}
+
 // ─── Vendor Analytics (for value reports) ────────────────────
 
 export interface VendorAnalytics {
