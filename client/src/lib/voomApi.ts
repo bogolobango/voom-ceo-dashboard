@@ -1059,7 +1059,10 @@ export interface SupplyDemandData {
   gaps: SupplyDemandGap[];
   topSearches: { query: string; searchCount: number; resultCount: number }[];
   totalSearches: number;
+  uniqueQueries: number;
   zeroResultRate: number;
+  resultCountTracked: boolean;
+  queriesWithResultData: number;
 }
 
 export async function fetchSupplyDemandGaps(): Promise<SupplyDemandData | null> {

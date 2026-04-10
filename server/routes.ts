@@ -604,8 +604,8 @@ router.get("/api/briefing", async (_req, res) => {
     let activePaidVendors = 0;
     let mrr = 0;
     for (const v of paidVendorsRaw || []) {
-      // Skip test accounts (userId 0 or not approved)
-      if (v.userId === 0 || (v.status && v.status !== "approved")) continue;
+      // Skip test accounts (userId null/0 or not approved)
+      if (!v.userId || v.userId === 0 || (v.status && v.status !== "approved")) continue;
       if (!v.tierExpiresAt || v.tierExpiresAt > nowISO) {
         activePaidVendors++;
         mrr += TIER_PRICES[v.tier] || 0;
@@ -1798,25 +1798,34 @@ router.get("/api/analytics/supply-demand", async (_req, res) => {
       .eq("eventType", "search")
       .gte("createdAt", sevenDaysAgo);
 
-    const queryMap = new Map<string, { count: number; results: number }>();
+    const queryMap = new Map<string, { count: number; results: number; hasResultCount: boolean }>();
     for (const e of searchEvents || []) {
       const meta = e.metadata as Record<string, unknown> | null;
       if (!meta?.query) continue;
       const q = (meta.query as string).toLowerCase().trim();
       if (q.length < 2) continue;
-      const existing = queryMap.get(q) || { count: 0, results: 0 };
+      const existing = queryMap.get(q) || { count: 0, results: 0, hasResultCount: false };
       existing.count++;
-      const rc = (meta.resultCount ?? meta.results ?? 0) as number;
-      existing.results = Math.max(existing.results, rc);
+      // Only treat as zero-result if the metadata explicitly includes a result count
+      const rc = meta.resultCount ?? meta.results ?? undefined;
+      if (rc !== undefined) {
+        existing.hasResultCount = true;
+        existing.results = Math.max(existing.results, rc as number);
+      }
       queryMap.set(q, existing);
     }
 
-    // Zero-result searches sorted by volume
+    // Zero-result searches: only count queries that explicitly reported 0 results
+    // If resultCount was never sent, we can't classify it as zero-result
     const gaps = [...queryMap.entries()]
-      .filter(([, d]) => d.results === 0)
+      .filter(([, d]) => d.hasResultCount && d.results === 0)
       .sort((a, b) => b[1].count - a[1].count)
       .slice(0, 30)
       .map(([query, d]) => ({ query, searchCount: d.count }));
+
+    // Count queries with confirmed result counts for accurate zero-result rate
+    const queriesWithResultCount = [...queryMap.values()].filter(d => d.hasResultCount);
+    const confirmedZeroResult = queriesWithResultCount.filter(d => d.results === 0).length;
 
     // Get vendors in pipeline with their specializations
     const { data: allVendors } = await supabase!
@@ -1873,7 +1882,14 @@ router.get("/api/analytics/supply-demand", async (_req, res) => {
         gaps: gapsWithMatches,
         topSearches: allSearches,
         totalSearches: searchEvents?.length ?? 0,
-        zeroResultRate: queryMap.size > 0 ? Math.round(([...queryMap.values()].filter(d => d.results === 0).length / queryMap.size) * 100) : 0,
+        uniqueQueries: queryMap.size,
+        // Only calculate zero-result rate from searches that actually report result counts
+        zeroResultRate: queriesWithResultCount.length > 0
+          ? Math.round((confirmedZeroResult / queriesWithResultCount.length) * 100)
+          : 0,
+        // Flag: are search events sending result counts?
+        resultCountTracked: queriesWithResultCount.length > 0,
+        queriesWithResultData: queriesWithResultCount.length,
       },
     });
   } catch (error) {
