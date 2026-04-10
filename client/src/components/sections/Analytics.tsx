@@ -625,6 +625,9 @@ const EVENT_TYPE_META: Record<string, { label: string; color: string }> = {
   order_created: { label: 'Orders Created', color: '#E11D48' },
   page_view: { label: 'Page Views', color: '#0EA5E9' },
   session_start: { label: 'Sessions', color: '#64748B' },
+  vendor_view: { label: 'Vendor Profile Views', color: '#8B5CF6' },
+  filter_used: { label: 'Filter Interactions', color: '#F59E0B' },
+  page_leave: { label: 'Session Ends', color: '#94A3B8' },
 };
 
 function TrackerWarning({ label }: { label: string }) {
