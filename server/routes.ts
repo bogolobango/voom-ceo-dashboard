@@ -579,7 +579,7 @@ router.get("/api/briefing", async (_req, res) => {
       const query = meta.query as string | undefined;
       if (!query) continue;
       queryCountMap.set(query, (queryCountMap.get(query) || 0) + 1);
-      const resultCount = (meta.resultCount ?? meta.results ?? 0) as number;
+      const resultCount = (meta.resultCount ?? meta.resultsCount ?? meta.results ?? 0) as number;
       queryResultMap.set(query, resultCount);
       if (resultCount === 0) {
         zeroResultMap.set(query, (zeroResultMap.get(query) || 0) + 1);
@@ -1809,7 +1809,7 @@ router.get("/api/analytics/supply-demand", async (_req, res) => {
       const existing = queryMap.get(q) || { count: 0, results: 0, hasResultCount: false };
       existing.count++;
       // Only treat as zero-result if the metadata explicitly includes a result count
-      const rc = meta.resultCount ?? meta.results ?? undefined;
+      const rc = meta.resultCount ?? meta.resultsCount ?? meta.results ?? undefined;
       if (rc !== undefined) {
         existing.hasResultCount = true;
         existing.results = Math.max(existing.results, rc as number);
@@ -2112,6 +2112,7 @@ router.post("/api/track", express.text({ type: "text/plain" }), async (req, res)
     const validTypes = [
       "page_view", "session_start", "product_view", "whatsapp_tap",
       "wishlist_add", "cart_add", "search", "order_created",
+      "vendor_view", "filter_used", "page_leave",
     ];
 
     const rows = events
