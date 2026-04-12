@@ -5,6 +5,7 @@ import { supabase } from "./supabase.js";
 import { safeLogError } from "./index.js";
 import { discoverWhatsAppGroups } from "./whatsapp-scraper.js";
 import { broadcastToGroups, verifyWebhookToken, processLeadMessage, parseWebhookPayload, sendTextMessage } from "./whatsapp-api.js";
+import { normalizeQueryCached } from "./query-normalize.js";
 import { loadWaConfig, saveWaConfig } from "./wa-config.js";
 
 const router = Router();
@@ -569,34 +570,38 @@ router.get("/api/briefing", async (_req, res) => {
       supabase!.from("analytics_events").select("productId").eq("eventType", "product_view").gte("createdAt", thirtyDaysAgo).not("productId", "is", null),
     ]);
 
-    // Process search events — only flag as zero-result if metadata explicitly says so
-    const queryCountMap = new Map<string, number>();
+    // Process search events — normalize queries so typo variants cluster
+    const queryCountMap = new Map<string, { count: number; display: string }>();
     const queryResultMap = new Map<string, number>();
     const zeroResultMap = new Map<string, number>();
+    // Light normalization for briefing: use normalizeQueryCached with an empty vocab
+    // (applies synonyms and rules but no fuzzy matching — fast enough for briefing)
     for (const evt of recentSearchEvents || []) {
       const meta = evt.metadata as Record<string, unknown> | null;
       if (!meta) continue;
-      const query = meta.query as string | undefined;
-      if (!query) continue;
-      queryCountMap.set(query, (queryCountMap.get(query) || 0) + 1);
+      const rawQuery = meta.query as string | undefined;
+      if (!rawQuery) continue;
+      const { normalized } = normalizeQueryCached(rawQuery, []);
+      if (!normalized || normalized.length < 2) continue;
+      const existing = queryCountMap.get(normalized) || { count: 0, display: rawQuery };
+      existing.count++;
+      queryCountMap.set(normalized, existing);
       // Only count as zero-result if the tracker explicitly reported it.
-      // Without this check, 644 searches missing resultCount would all be
-      // classified as zero-result and spam the alerts panel.
       const rc = meta.resultCount ?? meta.resultsCount ?? meta.results;
       if (rc !== undefined) {
-        queryResultMap.set(query, rc as number);
+        queryResultMap.set(normalized, rc as number);
         if (rc === 0) {
-          zeroResultMap.set(query, (zeroResultMap.get(query) || 0) + 1);
+          zeroResultMap.set(normalized, (zeroResultMap.get(normalized) || 0) + 1);
         }
       }
     }
     const topSearches = [...queryCountMap.entries()]
-      .sort((a, b) => b[1] - a[1])
+      .sort((a, b) => b[1].count - a[1].count)
       .slice(0, 10)
-      .map(([query, count]) => ({ query, count, results: queryResultMap.get(query) ?? 0 }));
+      .map(([, data]) => ({ query: data.display, count: data.count, results: queryResultMap.get(data.display) ?? 0 }));
     const zeroResultSearches = [...zeroResultMap.entries()]
       .sort((a, b) => b[1] - a[1])
-      .map(([query, count]) => ({ query, count }));
+      .map(([normalized, count]) => ({ query: queryCountMap.get(normalized)?.display ?? normalized, count }));
 
     const expiringVendors = (expiringVendorsRaw || []).map((v: any) => ({
       id: v.id,
@@ -1798,21 +1803,46 @@ router.get("/api/analytics/supply-demand", async (_req, res) => {
   try {
     const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
 
-    // Get zero-result and low-result searches (last 7 days)
+    // Fetch products first so we can build the normalization vocabulary
+    const { data: allProducts } = await supabase!
+      .from("products")
+      .select("vendorId, name, vehicleMake, vehicleModel, categoryId");
+
+    const productsForVocab = (allProducts || []).map((p: any) => ({
+      name: p.name, vehicleMake: p.vehicleMake, vehicleModel: p.vehicleModel,
+    }));
+
+    // Get search events (last 7 days)
     const { data: searchEvents } = await supabase!
       .from("analytics_events")
       .select("metadata")
       .eq("eventType", "search")
       .gte("createdAt", sevenDaysAgo);
 
-    const queryMap = new Map<string, { count: number; results: number; hasResultCount: boolean; topMake: string | null; topCategory: string | null; inferredResults: number | null }>();
+    // Map uses NORMALIZED query as key so typos cluster together.
+    // Store the most common raw form as the display label.
+    const queryMap = new Map<string, { count: number; results: number; hasResultCount: boolean; topMake: string | null; topCategory: string | null; inferredResults: number | null; displayQuery: string; rawVariants: Map<string, number> }>();
     for (const e of searchEvents || []) {
       const meta = e.metadata as Record<string, unknown> | null;
       if (!meta?.query) continue;
-      const q = (meta.query as string).toLowerCase().trim();
-      if (q.length < 2) continue;
-      const existing = queryMap.get(q) || { count: 0, results: 0, hasResultCount: false, topMake: null, topCategory: null, inferredResults: null };
+      const rawQ = (meta.query as string).trim();
+      if (rawQ.length < 2) continue;
+      // Normalize through rules + fuzzy matching against product catalog
+      const { normalized } = normalizeQueryCached(rawQ, productsForVocab);
+      if (!normalized || normalized.length < 2) continue;
+
+      const existing = queryMap.get(normalized) || {
+        count: 0, results: 0, hasResultCount: false,
+        topMake: null, topCategory: null, inferredResults: null,
+        displayQuery: rawQ, rawVariants: new Map<string, number>(),
+      };
       existing.count++;
+      existing.rawVariants.set(rawQ.toLowerCase(), (existing.rawVariants.get(rawQ.toLowerCase()) || 0) + 1);
+      // Use the most common raw variant as the display label
+      if ((existing.rawVariants.get(rawQ.toLowerCase()) || 0) > (existing.rawVariants.get(existing.displayQuery.toLowerCase()) || 0)) {
+        existing.displayQuery = rawQ;
+      }
+
       // Only treat as explicit zero-result if metadata includes a result count
       const rc = meta.resultCount ?? meta.resultsCount ?? meta.results ?? undefined;
       if (rc !== undefined) {
@@ -1822,13 +1852,8 @@ router.get("/api/analytics/supply-demand", async (_req, res) => {
       // Capture filter context from search events
       if (meta.make && !existing.topMake) existing.topMake = meta.make as string;
       if ((meta.categoryId || meta.category) && !existing.topCategory) existing.topCategory = (meta.categoryId ?? meta.category) as string;
-      queryMap.set(q, existing);
+      queryMap.set(normalized, existing);
     }
-
-    // Get products to understand which makes/categories each vendor covers
-    const { data: allProducts } = await supabase!
-      .from("products")
-      .select("vendorId, name, vehicleMake, vehicleModel, categoryId");
 
     // Build a searchable product word index so we can infer result counts for
     // queries where the tracker didn't send a resultCount. This lets us detect
@@ -1878,12 +1903,14 @@ router.get("/api/analytics/supply-demand", async (_req, res) => {
       })
       .sort((a, b) => b[1].count - a[1].count)
       .slice(0, 30)
-      .map(([query, d]) => ({
-        query,
+      .map(([normalizedQuery, d]) => ({
+        query: d.displayQuery,               // raw label for display
+        normalizedQuery,                      // canonical bucket key
+        variantCount: d.rawVariants.size,    // how many raw spellings mapped to this bucket
         searchCount: d.count,
         make: d.topMake,
         category: d.topCategory,
-        inferred: !d.hasResultCount, // flag so UI can show "inferred" badge
+        inferred: !d.hasResultCount,
       }));
 
     // Count queries with confirmed OR inferred result counts
@@ -1927,12 +1954,12 @@ router.get("/api/analytics/supply-demand", async (_req, res) => {
       return { ...gap, matchedVendors: matches };
     });
 
-    // All searches summary
+    // All searches summary (using displayQuery for human readability)
     const allSearches = [...queryMap.entries()]
       .sort((a, b) => b[1].count - a[1].count)
       .slice(0, 50)
-      .map(([query, d]) => ({
-        query,
+      .map(([, d]) => ({
+        query: d.displayQuery,
         searchCount: d.count,
         resultCount: d.hasResultCount ? d.results : (d.inferredResults ?? 0),
         inferred: !d.hasResultCount,
