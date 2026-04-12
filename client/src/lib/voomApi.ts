@@ -1076,17 +1076,23 @@ export async function fetchVendorAnalytics(vendorId: number): Promise<VendorAnal
 export interface SupplyDemandGap {
   query: string;
   searchCount: number;
+  make?: string | null;
+  category?: string | null;
+  inferred?: boolean;
   matchedVendors: { vendorId: number; businessName: string; phone: string; whatsapp: string | null; city: string | null; status: string; matchScore: number }[];
 }
 
 export interface SupplyDemandData {
   gaps: SupplyDemandGap[];
-  topSearches: { query: string; searchCount: number; resultCount: number }[];
+  topSearches: { query: string; searchCount: number; resultCount: number; inferred?: boolean }[];
   totalSearches: number;
   uniqueQueries: number;
   zeroResultRate: number;
   resultCountTracked: boolean;
   queriesWithResultData: number;
+  queriesInferred: number;
+  inferredZeroCount: number;
+  explicitZeroCount: number;
 }
 
 export async function fetchSupplyDemandGaps(): Promise<SupplyDemandData | null> {

@@ -5,6 +5,7 @@ import { supabase } from "./supabase.js";
 import { safeLogError } from "./index.js";
 import { discoverWhatsAppGroups } from "./whatsapp-scraper.js";
 import { broadcastToGroups, verifyWebhookToken, processLeadMessage, parseWebhookPayload, sendTextMessage } from "./whatsapp-api.js";
+import { normalizeQueryCached } from "./query-normalize.js";
 import { loadWaConfig, saveWaConfig } from "./wa-config.js";
 
 const router = Router();
@@ -570,29 +571,38 @@ router.get("/api/briefing", async (_req, res) => {
       supabase!.from("analytics_events").select("productId").eq("eventType", "product_view").gte("createdAt", thirtyDaysAgo).not("productId", "is", null),
     ]);
 
-    // Process search events
-    const queryCountMap = new Map<string, number>();
+    // Process search events — normalize queries so typo variants cluster
+    const queryCountMap = new Map<string, { count: number; display: string }>();
     const queryResultMap = new Map<string, number>();
     const zeroResultMap = new Map<string, number>();
+    // Light normalization for briefing: use normalizeQueryCached with an empty vocab
+    // (applies synonyms and rules but no fuzzy matching — fast enough for briefing)
     for (const evt of recentSearchEvents || []) {
       const meta = evt.metadata as Record<string, unknown> | null;
       if (!meta) continue;
-      const query = meta.query as string | undefined;
-      if (!query) continue;
-      queryCountMap.set(query, (queryCountMap.get(query) || 0) + 1);
-      const resultCount = (meta.resultCount ?? meta.resultsCount ?? meta.results ?? 0) as number;
-      queryResultMap.set(query, resultCount);
-      if (resultCount === 0) {
-        zeroResultMap.set(query, (zeroResultMap.get(query) || 0) + 1);
+      const rawQuery = meta.query as string | undefined;
+      if (!rawQuery) continue;
+      const { normalized } = normalizeQueryCached(rawQuery, []);
+      if (!normalized || normalized.length < 2) continue;
+      const existing = queryCountMap.get(normalized) || { count: 0, display: rawQuery };
+      existing.count++;
+      queryCountMap.set(normalized, existing);
+      // Only count as zero-result if the tracker explicitly reported it.
+      const rc = meta.resultCount ?? meta.resultsCount ?? meta.results;
+      if (rc !== undefined) {
+        queryResultMap.set(normalized, rc as number);
+        if (rc === 0) {
+          zeroResultMap.set(normalized, (zeroResultMap.get(normalized) || 0) + 1);
+        }
       }
     }
     const topSearches = [...queryCountMap.entries()]
-      .sort((a, b) => b[1] - a[1])
+      .sort((a, b) => b[1].count - a[1].count)
       .slice(0, 10)
-      .map(([query, count]) => ({ query, count, results: queryResultMap.get(query) ?? 0 }));
+      .map(([, data]) => ({ query: data.display, count: data.count, results: queryResultMap.get(data.display) ?? 0 }));
     const zeroResultSearches = [...zeroResultMap.entries()]
       .sort((a, b) => b[1] - a[1])
-      .map(([query, count]) => ({ query, count }));
+      .map(([normalized, count]) => ({ query: queryCountMap.get(normalized)?.display ?? normalized, count }));
 
     const expiringVendors = (expiringVendorsRaw || []).map((v: any) => ({
       id: v.id,
@@ -1794,22 +1804,47 @@ router.get("/api/analytics/supply-demand", async (_req, res) => {
   try {
     const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
 
-    // Get zero-result and low-result searches (last 7 days)
+    // Fetch products first so we can build the normalization vocabulary
+    const { data: allProducts } = await supabase!
+      .from("products")
+      .select("vendorId, name, vehicleMake, vehicleModel, categoryId");
+
+    const productsForVocab = (allProducts || []).map((p: any) => ({
+      name: p.name, vehicleMake: p.vehicleMake, vehicleModel: p.vehicleModel,
+    }));
+
+    // Get search events (last 7 days)
     const { data: searchEvents } = await supabase!
       .from("analytics_events")
       .select("metadata")
       .eq("eventType", "search")
       .gte("createdAt", sevenDaysAgo);
 
-    const queryMap = new Map<string, { count: number; results: number; hasResultCount: boolean; topMake: string | null; topCategory: string | null }>();
+    // Map uses NORMALIZED query as key so typos cluster together.
+    // Store the most common raw form as the display label.
+    const queryMap = new Map<string, { count: number; results: number; hasResultCount: boolean; topMake: string | null; topCategory: string | null; inferredResults: number | null; displayQuery: string; rawVariants: Map<string, number> }>();
     for (const e of searchEvents || []) {
       const meta = e.metadata as Record<string, unknown> | null;
       if (!meta?.query) continue;
-      const q = (meta.query as string).toLowerCase().trim();
-      if (q.length < 2) continue;
-      const existing = queryMap.get(q) || { count: 0, results: 0, hasResultCount: false, topMake: null, topCategory: null };
+      const rawQ = (meta.query as string).trim();
+      if (rawQ.length < 2) continue;
+      // Normalize through rules + fuzzy matching against product catalog
+      const { normalized } = normalizeQueryCached(rawQ, productsForVocab);
+      if (!normalized || normalized.length < 2) continue;
+
+      const existing = queryMap.get(normalized) || {
+        count: 0, results: 0, hasResultCount: false,
+        topMake: null, topCategory: null, inferredResults: null,
+        displayQuery: rawQ, rawVariants: new Map<string, number>(),
+      };
       existing.count++;
-      // Only treat as zero-result if the metadata explicitly includes a result count
+      existing.rawVariants.set(rawQ.toLowerCase(), (existing.rawVariants.get(rawQ.toLowerCase()) || 0) + 1);
+      // Use the most common raw variant as the display label
+      if ((existing.rawVariants.get(rawQ.toLowerCase()) || 0) > (existing.rawVariants.get(existing.displayQuery.toLowerCase()) || 0)) {
+        existing.displayQuery = rawQ;
+      }
+
+      // Only treat as explicit zero-result if metadata includes a result count
       const rc = meta.resultCount ?? meta.resultsCount ?? meta.results ?? undefined;
       if (rc !== undefined) {
         existing.hasResultCount = true;
@@ -1818,32 +1853,76 @@ router.get("/api/analytics/supply-demand", async (_req, res) => {
       // Capture filter context from search events
       if (meta.make && !existing.topMake) existing.topMake = meta.make as string;
       if ((meta.categoryId || meta.category) && !existing.topCategory) existing.topCategory = (meta.categoryId ?? meta.category) as string;
-      queryMap.set(q, existing);
+      queryMap.set(normalized, existing);
     }
 
-    // Zero-result searches: only count queries that explicitly reported 0 results
-    // If resultCount was never sent, we can't classify it as zero-result
+    // Build a searchable product word index so we can infer result counts for
+    // queries where the tracker didn't send a resultCount. This lets us detect
+    // real supply gaps from 644+ search events that lack resultCount metadata.
+    const productWordIndex = new Set<string>();
+    const productNameWords = (allProducts || []).map((p: any) => {
+      const words = new Set<string>();
+      if (p.vehicleMake) words.add((p.vehicleMake as string).toLowerCase());
+      if (p.vehicleModel) words.add((p.vehicleModel as string).toLowerCase());
+      if (p.name) {
+        (p.name as string).toLowerCase().split(/\s+/).forEach((w: string) => {
+          if (w.length > 2) words.add(w);
+        });
+      }
+      words.forEach(w => productWordIndex.add(w));
+      return words;
+    });
+
+    // For each query without explicit resultCount, infer results by matching
+    // query words against the product index. A query is a real zero-result gap
+    // if ZERO products contain any of its significant words.
+    const STOP_WORDS = new Set(['the', 'and', 'for', 'with', 'from', 'that', 'this', 'car', 'parts']);
+    for (const [query, data] of queryMap.entries()) {
+      if (data.hasResultCount) continue; // trust explicit count
+      const queryWords = query.split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
+      if (queryWords.length === 0) continue;
+      // Count how many products match at least one query word
+      let matchingProducts = 0;
+      for (const pWords of productNameWords) {
+        const matches = queryWords.some(qw => {
+          for (const pw of pWords) {
+            if (pw.includes(qw) || qw.includes(pw)) return true;
+          }
+          return false;
+        });
+        if (matches) matchingProducts++;
+      }
+      data.inferredResults = matchingProducts;
+    }
+
+    // Zero-result searches: include explicit zeros AND inferred zeros
     const gaps = [...queryMap.entries()]
-      .filter(([, d]) => d.hasResultCount && d.results === 0)
+      .filter(([, d]) => {
+        if (d.hasResultCount && d.results === 0) return true; // explicit zero
+        if (!d.hasResultCount && d.inferredResults === 0) return true; // inferred zero
+        return false;
+      })
       .sort((a, b) => b[1].count - a[1].count)
       .slice(0, 30)
-      .map(([query, d]) => ({ query, searchCount: d.count, make: d.topMake, category: d.topCategory }));
+      .map(([normalizedQuery, d]) => ({
+        query: d.displayQuery,               // raw label for display
+        normalizedQuery,                      // canonical bucket key
+        variantCount: d.rawVariants.size,    // how many raw spellings mapped to this bucket
+        searchCount: d.count,
+        make: d.topMake,
+        category: d.topCategory,
+        inferred: !d.hasResultCount,
+      }));
 
-    // Count queries with confirmed result counts for accurate zero-result rate
+    // Count queries with confirmed OR inferred result counts
     const queriesWithResultCount = [...queryMap.values()].filter(d => d.hasResultCount);
+    const queriesWithInferred = [...queryMap.values()].filter(d => !d.hasResultCount && d.inferredResults !== null);
     const confirmedZeroResult = queriesWithResultCount.filter(d => d.results === 0).length;
+    const inferredZeroResult = queriesWithInferred.filter(d => d.inferredResults === 0).length;
+    const totalAnalyzed = queriesWithResultCount.length + queriesWithInferred.length;
+    const totalZeroResult = confirmedZeroResult + inferredZeroResult;
 
-    // Get vendors in pipeline with their specializations
-    const { data: allVendors } = await supabase!
-      .from("vendors")
-      .select("id, businessName, phone, whatsapp, city, status");
-
-    const vendorList = allVendors || [];
-
-    // Get products to understand which makes/categories each vendor covers
-    const { data: allProducts } = await supabase!
-      .from("products")
-      .select("vendorId, name, vehicleMake, vehicleModel, categoryId");
+    const vendorList = (await supabase!.from("vendors").select("id, businessName, phone, whatsapp, city, status")).data || [];
 
     // Build vendor specialization index
     const vendorSpecs = new Map<number, Set<string>>();
@@ -1876,11 +1955,16 @@ router.get("/api/analytics/supply-demand", async (_req, res) => {
       return { ...gap, matchedVendors: matches };
     });
 
-    // All searches summary
+    // All searches summary (using displayQuery for human readability)
     const allSearches = [...queryMap.entries()]
       .sort((a, b) => b[1].count - a[1].count)
       .slice(0, 50)
-      .map(([query, d]) => ({ query, searchCount: d.count, resultCount: d.results }));
+      .map(([, d]) => ({
+        query: d.displayQuery,
+        searchCount: d.count,
+        resultCount: d.hasResultCount ? d.results : (d.inferredResults ?? 0),
+        inferred: !d.hasResultCount,
+      }));
 
     res.json({
       source: "database",
@@ -1889,13 +1973,14 @@ router.get("/api/analytics/supply-demand", async (_req, res) => {
         topSearches: allSearches,
         totalSearches: searchEvents?.length ?? 0,
         uniqueQueries: queryMap.size,
-        // Only calculate zero-result rate from searches that actually report result counts
-        zeroResultRate: queriesWithResultCount.length > 0
-          ? Math.round((confirmedZeroResult / queriesWithResultCount.length) * 100)
+        zeroResultRate: totalAnalyzed > 0
+          ? Math.round((totalZeroResult / totalAnalyzed) * 100)
           : 0,
-        // Flag: are search events sending result counts?
         resultCountTracked: queriesWithResultCount.length > 0,
         queriesWithResultData: queriesWithResultCount.length,
+        queriesInferred: queriesWithInferred.length,
+        inferredZeroCount: inferredZeroResult,
+        explicitZeroCount: confirmedZeroResult,
       },
     });
   } catch (error) {
