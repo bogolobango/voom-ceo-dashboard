@@ -1055,23 +1055,28 @@ function SupplyDemandTab() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      {/* Tracking warning if result counts aren't being sent */}
-      {!data.resultCountTracked && (
+      {/* Data source banner */}
+      {(data.queriesInferred > 0 || !data.resultCountTracked) && (
         <GlassSection style={{
           padding: '0.875rem 1.125rem',
-          background: 'rgba(217,119,6,0.04)',
-          border: '1px solid rgba(217,119,6,0.15)',
+          background: data.resultCountTracked ? 'rgba(5,150,105,0.04)' : 'rgba(14,165,233,0.04)',
+          border: `1px solid ${data.resultCountTracked ? 'rgba(5,150,105,0.15)' : 'rgba(14,165,233,0.15)'}`,
         }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
-            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#D97706', flexShrink: 0, marginTop: '0.25rem' }} />
+            <div style={{
+              width: 8, height: 8, borderRadius: '50%', flexShrink: 0, marginTop: '0.25rem',
+              background: data.resultCountTracked ? '#059669' : '#0EA5E9',
+            }} />
             <div>
-              <p style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#D97706', margin: 0 }}>
-                Search result counts not tracked
+              <p style={{ fontSize: '0.8125rem', fontWeight: 700, color: data.resultCountTracked ? '#059669' : '#0EA5E9', margin: 0 }}>
+                {data.resultCountTracked
+                  ? `Mixed data: ${data.explicitZeroCount} explicit + ${data.inferredZeroCount} inferred zero-result queries`
+                  : `Inferring supply gaps from product catalog (${data.queriesInferred} queries analyzed)`}
               </p>
               <p style={{ fontSize: '0.72rem', color: '#64748B', margin: '0.125rem 0 0' }}>
-                The marketplace is logging search queries but not how many results were returned.
-                Zero-result rate and supply gaps cannot be calculated without this data.
-                The marketplace needs to include <code style={{ background: 'rgba(217,119,6,0.08)', padding: '0.1rem 0.3rem', borderRadius: '0.25rem' }}>resultCount</code> in search event metadata.
+                {data.resultCountTracked
+                  ? 'Some queries have explicit resultCount from the tracker. Others are inferred by checking whether any products in the catalog match the query.'
+                  : 'The marketplace tracker isn\'t sending resultCount yet. The dashboard now infers zero-result gaps by matching search queries against the product catalog. If no products match any word in the query, it\'s flagged as a gap.'}
               </p>
             </div>
           </div>
@@ -1083,11 +1088,11 @@ function SupplyDemandTab() {
         {[
           { label: 'Total Searches (7d)', value: data.totalSearches.toLocaleString(), color: '#4F46E5' },
           { label: 'Unique Queries', value: data.uniqueQueries ?? data.topSearches.length, color: '#7C3AED' },
-          { label: 'Zero-Result Gaps', value: data.resultCountTracked ? data.gaps.length : 'N/A', color: '#E11D48' },
-          { label: 'Zero-Result Rate', value: data.resultCountTracked ? `${data.zeroResultRate}%` : 'N/A', color: '#D97706' },
+          { label: 'Zero-Result Gaps', value: data.gaps.length, color: '#E11D48' },
+          { label: 'Zero-Result Rate', value: `${data.zeroResultRate}%`, color: '#D97706' },
         ].map(s => (
           <GlassSection key={s.label} style={{ padding: '0.875rem', textAlign: 'center' }}>
-            <p style={{ fontSize: '1.5rem', fontWeight: 800, color: typeof s.value === 'string' && s.value === 'N/A' ? '#CBD5E1' : s.color, margin: 0, fontFamily: 'Space Grotesk' }}>{s.value}</p>
+            <p style={{ fontSize: '1.5rem', fontWeight: 800, color: s.color, margin: 0, fontFamily: 'Space Grotesk' }}>{s.value}</p>
             <p style={{ fontSize: '0.68rem', color: '#94A3B8', margin: '0.125rem 0 0', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>{s.label}</p>
           </GlassSection>
         ))}
@@ -1107,8 +1112,22 @@ function SupplyDemandTab() {
                 padding: '0.75rem', borderRadius: '0.75rem',
                 background: 'rgba(225,29,72,0.03)', borderLeft: '3px solid #E11D48',
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem' }}>
-                  <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#0F172A' }}>"{gap.query}"</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0, flex: 1 }}>
+                    <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#0F172A' }}>"{gap.query}"</span>
+                    {gap.inferred && (
+                      <span style={{
+                        fontSize: '0.62rem', fontWeight: 700, padding: '0.1rem 0.4rem', borderRadius: 999,
+                        background: 'rgba(14,165,233,0.1)', color: '#0EA5E9',
+                        textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0,
+                      }}>
+                        Inferred
+                      </span>
+                    )}
+                    {gap.make && (
+                      <span style={{ fontSize: '0.68rem', color: '#64748B' }}>· {gap.make}</span>
+                    )}
+                  </div>
                   <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#E11D48', fontFamily: 'Space Grotesk' }}>
                     {gap.searchCount} search{gap.searchCount !== 1 ? 'es' : ''}
                   </span>
