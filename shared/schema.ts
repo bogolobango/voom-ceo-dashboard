@@ -101,6 +101,8 @@ export const vendors = pgTable("vendors", {
   claimStatus: text("claimStatus").default("unclaimed"),
   ghanaCardFrontUrl: text("ghanaCardFrontUrl"),
   ghanaCardBackUrl: text("ghanaCardBackUrl"),
+  qualityScore: integer("qualityScore").default(0),
+  qualityScoreUpdatedAt: timestamp("qualityScoreUpdatedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });

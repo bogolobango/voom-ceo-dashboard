@@ -661,6 +661,8 @@ export interface VendorDetail {
   isFeatured: boolean;
   featuredUntil: string | null;
   featuredCategoryId: number | null;
+  qualityScore: number | null;
+  qualityScoreUpdatedAt: string | null;
   createdAt: string;
   updatedAt: string;
   totalListings: number;
