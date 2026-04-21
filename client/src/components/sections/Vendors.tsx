@@ -58,6 +58,14 @@ function isClaimed(v: Vendor) { return v.userId !== null && v.userId !== 0; }
 function isUnclaimed(v: Vendor) { return !isClaimed(v); }
 function isClaimRequest(v: Vendor) { return isClaimed(v) && v.status === 'pending'; }
 
+const TIER_COLORS: Record<string, { bg: string; color: string }> = {
+  free: { bg: 'rgba(148,163,184,0.1)', color: '#94A3B8' },
+  starter: { bg: 'rgba(79,70,229,0.1)', color: '#4F46E5' },
+  pro: { bg: 'rgba(14,165,233,0.1)', color: '#0EA5E9' },
+  business: { bg: 'rgba(217,119,6,0.1)', color: '#D97706' },
+  enterprise: { bg: 'rgba(5,150,105,0.1)', color: '#059669' },
+};
+
 const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
   approved:  { bg: 'rgba(5,150,105,0.1)',   color: '#059669', label: 'Active' },
   pending:   { bg: 'rgba(217,119,6,0.1)',   color: '#D97706', label: 'Pending' },
@@ -277,12 +285,12 @@ export function Vendors({ vendors, onRefresh }: VendorsProps) {
         {/* Desktop Table Header */}
         <div className="vendor-table-header" style={{
           display: 'grid',
-          gridTemplateColumns: '2fr 1fr 1fr 0.75fr 0.75fr 1.1fr',
+          gridTemplateColumns: '2fr 0.9fr 0.8fr 0.7fr 0.6fr 0.6fr 1fr',
           padding: '0.75rem 1.25rem',
           borderBottom: '1px solid rgba(79,70,229,0.06)',
           background: 'rgba(248,250,252,0.8)',
         }}>
-          {['Business', 'City', 'Status', 'Sales', 'Rating', 'Action'].map(h => (
+          {['Business', 'City', 'Status', 'Tier', 'Sales', 'Rating', 'Action'].map(h => (
             <p key={h} style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94A3B8', letterSpacing: '0.06em', textTransform: 'uppercase', margin: 0 }}>
               {h}
             </p>
@@ -346,6 +354,9 @@ export function Vendors({ vendors, onRefresh }: VendorsProps) {
                   </div>
                   <div style={{ display: 'flex', gap: '0.625rem', paddingLeft: '2.875rem', alignItems: 'center', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '0.72rem', color: '#64748B' }}>{vendor.city || '—'}</span>
+                    {(() => { const tc = TIER_COLORS[vendor.tier] || TIER_COLORS.free; return (
+                      <span style={{ fontSize: '0.62rem', fontWeight: 600, background: tc.bg, color: tc.color, padding: '0.1rem 0.4rem', borderRadius: 999, textTransform: 'capitalize' }}>{vendor.tier}</span>
+                    ); })()}
                     <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
                       Sales: <strong style={{ color: '#0F172A', fontFamily: 'Space Grotesk' }}>{vendor.totalSales || 0}</strong>
                     </span>
@@ -392,7 +403,7 @@ export function Vendors({ vendors, onRefresh }: VendorsProps) {
                 {/* ── Desktop Row ── */}
                 <div className="vendor-desktop-row" style={{
                   display: 'grid',
-                  gridTemplateColumns: '2fr 1fr 1fr 0.75fr 0.75fr 1.1fr',
+                  gridTemplateColumns: '2fr 0.9fr 0.8fr 0.7fr 0.6fr 0.6fr 1fr',
                   alignItems: 'center',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
@@ -422,6 +433,11 @@ export function Vendors({ vendors, onRefresh }: VendorsProps) {
                       {unclaimed ? 'Unclaimed' : reviewed ? 'Reviewed' : st.label}
                     </span>
                   )}
+
+                  {/* Tier badge */}
+                  {(() => { const tc = TIER_COLORS[vendor.tier] || TIER_COLORS.free; return (
+                    <span style={{ fontSize: '0.68rem', fontWeight: 600, background: tc.bg, color: tc.color, padding: '0.2rem 0.5rem', borderRadius: 999, textTransform: 'capitalize' }}>{vendor.tier}</span>
+                  ); })()}
 
                   <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#0F172A', fontFamily: 'Space Grotesk' }}>
                     {vendor.totalSales || 0}
