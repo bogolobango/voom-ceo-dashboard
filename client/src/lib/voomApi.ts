@@ -774,12 +774,14 @@ export async function updateVendorPipelineStage(vendorId: number, pipelineStage:
   } catch { return false; }
 }
 
-export async function updateVendorTier(vendorId: number, tier: string, tierExpiresAt?: string): Promise<boolean> {
+export async function updateVendorTier(vendorId: number, tier: string, tierExpiresAt?: string | null): Promise<boolean> {
   try {
+    const body: Record<string, unknown> = { tier };
+    if (tierExpiresAt !== undefined) body.tierExpiresAt = tierExpiresAt;
     const res = await fetch(`/api/vendors/${vendorId}/tier`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tier, tierExpiresAt }),
+      body: JSON.stringify(body),
     });
     return res.ok;
   } catch { return false; }

@@ -1369,13 +1369,25 @@ router.patch("/api/vendors/:id/tier", async (req, res) => {
       return res.status(400).json({ error: "Invalid tier. Must be one of: " + validTiers.join(", ") });
     }
 
+    // Read current tier BEFORE updating (for audit trail)
+    const { data: current } = await supabase!
+      .from("vendors")
+      .select("tier")
+      .eq("id", vendorId)
+      .single();
+    const fromTier = current?.tier ?? "unknown";
+
     const updateFields: Record<string, any> = {
       tier,
       updatedAt: new Date().toISOString(),
     };
-    if (tierExpiresAt !== undefined) {
+
+    // Handle tierExpiresAt: accept null (clear), string (set), or undefined (don't change)
+    if (tierExpiresAt === null || tier === "free") {
+      updateFields.tierExpiresAt = null;
+    } else if (tierExpiresAt !== undefined) {
       if (typeof tierExpiresAt !== "string" || isNaN(Date.parse(tierExpiresAt))) {
-        return res.status(400).json({ error: "tierExpiresAt must be a valid ISO 8601 date string" });
+        return res.status(400).json({ error: "tierExpiresAt must be a valid ISO 8601 date string or null" });
       }
       updateFields.tierExpiresAt = tierExpiresAt;
     }
@@ -1390,6 +1402,21 @@ router.patch("/api/vendors/:id/tier", async (req, res) => {
     if (error) throw error;
     if (!data) {
       return res.status(404).json({ error: "Vendor not found" });
+    }
+
+    // Audit trail: log the tier change as a subscription event (best-effort)
+    if (fromTier !== tier) {
+      try {
+        await supabase!.from("subscription_events").insert({
+          vendorId,
+          event: "tier_change",
+          fromTier,
+          toTier: tier,
+          createdAt: new Date().toISOString(),
+        });
+      } catch (logErr) {
+        safeLogError("Failed to log subscription event (non-fatal)", logErr);
+      }
     }
 
     cache.del(CACHE_KEYS.stats);

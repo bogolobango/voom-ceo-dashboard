@@ -231,7 +231,9 @@ function LinkedUserAccount({ phone }: { phone: string | undefined }) {
 
 function OverviewTab({ vendor }: { vendor: VendorDetail }) {
   const [statusUpdating, setStatusUpdating] = useState(false);
-  const [tierGranted, setTierGranted] = useState(false);
+  const [selectedTier, setSelectedTier] = useState<string | null>(null);
+  const [selectedDuration, setSelectedDuration] = useState<string>('1year');
+  const [tierConfirming, setTierConfirming] = useState(false);
   const queryClient = useQueryClient();
 
   // ── Edit mode ──────────────────────────────────────────────────────────────
@@ -295,15 +297,32 @@ function OverviewTab({ vendor }: { vendor: VendorDetail }) {
     setStatusUpdating(false);
   }, [vendor.id, queryClient]);
 
-  const tierGrantMutation = useMutation({
+  const DURATIONS: Record<string, { label: string; ms: number | null }> = {
+    '1month': { label: '1 Month', ms: 30 * 86400000 },
+    '3months': { label: '3 Months', ms: 90 * 86400000 },
+    '6months': { label: '6 Months', ms: 180 * 86400000 },
+    '1year': { label: '1 Year', ms: 365 * 86400000 },
+    'noexpiry': { label: 'No Expiry', ms: null },
+  };
+
+  const computeExpiry = () => {
+    const d = DURATIONS[selectedDuration];
+    if (!d || d.ms === null) return null;
+    return new Date(Date.now() + d.ms).toISOString();
+  };
+
+  const tierMutation = useMutation({
     mutationFn: () => {
-      const oneYearFromNow = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
-      return updateVendorTier(vendor.id, 'pro', oneYearFromNow);
+      const tier = selectedTier!;
+      const expiry = tier === 'free' ? null : computeExpiry();
+      return updateVendorTier(vendor.id, tier, expiry);
     },
     onSuccess: () => {
-      setTierGranted(true);
+      setTierConfirming(false);
+      setSelectedTier(null);
       queryClient.invalidateQueries({ queryKey: ['vendorDetail', vendor.id] });
       queryClient.invalidateQueries({ queryKey: ['vendors'] });
+      queryClient.invalidateQueries({ queryKey: ['vendorSubEvents', vendor.id] });
     },
   });
 
@@ -590,32 +609,99 @@ function OverviewTab({ vendor }: { vendor: VendorDetail }) {
           ))}
         </div>
 
-        {/* Tier quick action */}
-        <div style={{ marginTop: '0.875rem', paddingTop: '0.875rem', borderTop: '1px solid rgba(79,70,229,0.07)' }}>
-          <p style={{ fontSize: '0.75rem', color: '#64748B', margin: '0 0 0.5rem 0' }}>Subscription quick actions:</p>
-          {tierGranted ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', background: 'rgba(14,165,233,0.08)', borderRadius: '0.5rem', border: '1px solid rgba(14,165,233,0.2)' }}>
-              <span style={{ fontSize: '0.9rem' }}>🎉</span>
-              <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 600, color: '#0EA5E9' }}>Pro tier granted — free for 1 year. Expires {new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}.</p>
-            </div>
-          ) : (
-            <button
-              onClick={() => tierGrantMutation.mutate()}
-              disabled={tierGrantMutation.isPending || vendor.tier === 'pro'}
-              style={{
-                width: '100%', padding: '0.5rem 0.875rem', borderRadius: '0.5rem',
-                border: '1.5px solid rgba(14,165,233,0.3)',
-                background: vendor.tier === 'pro' ? 'rgba(14,165,233,0.05)' : 'rgba(14,165,233,0.08)',
-                color: '#0EA5E9', fontSize: '0.75rem', fontWeight: 700,
-                cursor: (tierGrantMutation.isPending || vendor.tier === 'pro') ? 'default' : 'pointer',
-                opacity: tierGrantMutation.isPending ? 0.6 : 1,
-                fontFamily: 'Plus Jakarta Sans', textAlign: 'left',
-              }}
-            >
-              {vendor.tier === 'pro' && !tierGranted ? '✓ Already on Pro tier' : tierGrantMutation.isPending ? 'Granting…' : '🎁 Grant 1-Year Pro (Free)'}
-            </button>
-          )}
+      </SectionCard>
+
+      {/* Tier Management — separate card to avoid breaking status buttons */}
+      <SectionCard title="Subscription Management">
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '0.625rem 0.75rem', borderRadius: '0.625rem',
+          background: 'rgba(248,250,252,0.8)', marginBottom: '0.75rem',
+        }}>
+          <div>
+            <p style={{ fontSize: '0.68rem', color: '#94A3B8', margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Current Tier</p>
+            <p style={{ fontSize: '1rem', fontWeight: 800, color: tierColor, margin: '0.125rem 0 0', textTransform: 'capitalize', fontFamily: 'Space Grotesk' }}>{vendor.tier}</p>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <p style={{ fontSize: '0.68rem', color: '#94A3B8', margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Expires</p>
+            <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#0F172A', margin: '0.125rem 0 0' }}>
+              {vendor.tierExpiresAt ? formatDate(vendor.tierExpiresAt) : 'No expiry'}
+            </p>
+          </div>
         </div>
+
+        {tierMutation.isSuccess && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', marginBottom: '0.75rem', background: 'rgba(5,150,105,0.08)', borderRadius: '0.5rem', border: '1px solid rgba(5,150,105,0.2)' }}>
+            <span style={{ fontSize: '0.9rem' }}>✓</span>
+            <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 600, color: '#059669' }}>Tier updated successfully.</p>
+          </div>
+        )}
+
+        {!tierConfirming ? (
+          <>
+            <p style={{ fontSize: '0.75rem', color: '#64748B', margin: '0 0 0.375rem 0' }}>Change tier:</p>
+            <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', marginBottom: '0.625rem' }}>
+              {(['free', 'starter', 'pro', 'business', 'enterprise'] as const).map(t => {
+                const isActive = (selectedTier ?? vendor.tier) === t;
+                const color = TIER_COLORS[t] || '#94A3B8';
+                return (
+                  <button key={t} onClick={() => setSelectedTier(t === vendor.tier ? null : t)}
+                    style={{ padding: '0.375rem 0.625rem', borderRadius: '0.5rem', border: isActive ? `1.5px solid ${color}` : '1.5px solid rgba(148,163,184,0.2)', background: isActive ? `${color}12` : 'rgba(248,250,252,0.8)', color: isActive ? color : '#64748B', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'Plus Jakarta Sans', textTransform: 'capitalize', transition: 'all 0.15s ease' }}>
+                    {t}
+                  </button>
+                );
+              })}
+            </div>
+            {selectedTier && selectedTier !== 'free' && selectedTier !== vendor.tier && (
+              <>
+                <p style={{ fontSize: '0.75rem', color: '#64748B', margin: '0 0 0.375rem 0' }}>Duration:</p>
+                <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                  {Object.entries(DURATIONS).map(([key, d]) => (
+                    <button key={key} onClick={() => setSelectedDuration(key)}
+                      style={{ padding: '0.3rem 0.5rem', borderRadius: '0.375rem', border: selectedDuration === key ? '1.5px solid #4F46E5' : '1.5px solid rgba(148,163,184,0.2)', background: selectedDuration === key ? 'rgba(79,70,229,0.08)' : 'rgba(248,250,252,0.8)', color: selectedDuration === key ? '#4F46E5' : '#64748B', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'Plus Jakarta Sans' }}>
+                      {d.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            {selectedTier && selectedTier !== vendor.tier && (
+              <button onClick={() => setTierConfirming(true)}
+                style={{ width: '100%', padding: '0.5rem', borderRadius: '0.5rem', border: 'none', background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)', color: 'white', fontSize: '0.8125rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'Plus Jakarta Sans' }}>
+                Change to {selectedTier.charAt(0).toUpperCase() + selectedTier.slice(1)}{selectedTier !== 'free' ? ` · ${DURATIONS[selectedDuration].label}` : ''}
+              </button>
+            )}
+          </>
+        ) : (
+          <div style={{ padding: '0.875rem', borderRadius: '0.75rem', background: 'rgba(79,70,229,0.04)', border: '1px solid rgba(79,70,229,0.12)' }}>
+            <p style={{ fontSize: '0.875rem', fontWeight: 700, color: '#0F172A', margin: '0 0 0.5rem', fontFamily: 'Plus Jakarta Sans' }}>Confirm Tier Change</p>
+            <div style={{ fontSize: '0.8125rem', color: '#475569', marginBottom: '0.75rem', lineHeight: 1.5 }}>
+              <p style={{ margin: '0 0 0.25rem' }}><strong>{vendor.businessName}</strong></p>
+              <p style={{ margin: '0 0 0.25rem' }}>{vendor.tier} → <strong style={{ color: TIER_COLORS[selectedTier!] || '#0F172A', textTransform: 'capitalize' }}>{selectedTier}</strong></p>
+              {selectedTier !== 'free' && <p style={{ margin: 0 }}>Expires: <strong>{computeExpiry() ? new Date(computeExpiry()!).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Never'}</strong></p>}
+              {selectedTier === 'free' && <p style={{ margin: 0, color: '#D97706' }}>Expiration date will be cleared.</p>}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+              <button onClick={() => { setTierConfirming(false); setSelectedTier(null); }} disabled={tierMutation.isPending}
+                style={{ padding: '0.5rem', borderRadius: '0.5rem', border: '1.5px solid rgba(148,163,184,0.3)', background: 'rgba(255,255,255,0.8)', color: '#64748B', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'Plus Jakarta Sans' }}>
+                Cancel
+              </button>
+              <button onClick={() => tierMutation.mutate()} disabled={tierMutation.isPending}
+                style={{ padding: '0.5rem', borderRadius: '0.5rem', border: 'none', background: tierMutation.isPending ? 'rgba(79,70,229,0.5)' : 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)', color: 'white', fontSize: '0.8125rem', fontWeight: 700, cursor: tierMutation.isPending ? 'not-allowed' : 'pointer', fontFamily: 'Plus Jakarta Sans', boxShadow: '0 2px 8px rgba(79,70,229,0.25)' }}>
+                {tierMutation.isPending ? 'Updating…' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {vendor.tier === 'free' && !tierConfirming && !selectedTier && (
+          <div style={{ marginTop: '0.625rem', paddingTop: '0.625rem', borderTop: '1px solid rgba(79,70,229,0.07)' }}>
+            <button onClick={() => { setSelectedTier('pro'); setSelectedDuration('1year'); setTierConfirming(true); }}
+              style={{ width: '100%', padding: '0.5rem 0.875rem', borderRadius: '0.5rem', border: '1.5px solid rgba(14,165,233,0.3)', background: 'rgba(14,165,233,0.08)', color: '#0EA5E9', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'Plus Jakarta Sans', textAlign: 'left' }}>
+              Quick: Grant 1-Year Pro (Free)
+            </button>
+          </div>
+        )}
       </SectionCard>
 
       {/* Linked user login account */}
