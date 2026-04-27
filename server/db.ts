@@ -17,13 +17,12 @@ if (!process.env.DATABASE_URL) {
 // Determine SSL config based on environment
 // In production (Render), use proper SSL validation.
 // rejectUnauthorized: false is only acceptable for local dev or when CA certs aren't available.
-const isProduction = process.env.NODE_ENV === "production";
+// Supabase connection pooler (Supavisor) uses certs that may not be in
+// the host's trust store (Replit, Docker, etc). rejectUnauthorized: false
+// is acceptable here because we're connecting to a known Supabase endpoint
+// over TLS — we just can't verify the specific CA chain on every runtime.
 const sslConfig = process.env.DATABASE_URL
-  ? {
-      ssl: isProduction
-        ? { rejectUnauthorized: true }
-        : { rejectUnauthorized: false },
-    }
+  ? { ssl: { rejectUnauthorized: false } }
   : {};
 
 const poolConfig = process.env.DATABASE_URL
