@@ -116,14 +116,14 @@ async function startServer() {
     // In development, allow all requests
     if (process.env.NODE_ENV !== "production") return next();
 
-    // In production, require API key
-    if (!apiKey) {
-      return res.status(500).json({ error: "Server misconfigured: DASHBOARD_API_KEY is required in production." });
-    }
-
-    const provided = req.headers["x-api-key"];
-    if (provided !== apiKey) {
-      return res.status(401).json({ error: "Unauthorized. Provide a valid X-API-Key header." });
+    // In production: if DASHBOARD_API_KEY is set, enforce it for external
+    // API consumers. If not set, allow all requests (dashboard is served
+    // from the same origin and can't send custom headers).
+    if (apiKey) {
+      const provided = req.headers["x-api-key"];
+      if (provided !== apiKey) {
+        return res.status(401).json({ error: "Unauthorized. Provide a valid X-API-Key header." });
+      }
     }
 
     next();
@@ -171,7 +171,7 @@ async function startServer() {
   // In dev: 3001 (Vite proxies /api from 3000 → 3001). In prod: 3000.
   const port = process.env.PORT || (process.env.NODE_ENV === "production" ? 3000 : 3001);
 
-  server.listen(port, () => {
+  server.listen(port, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${port}/`);
     console.log(`Database: ${process.env.VITE_SUPABASE_URL ? "Supabase configured" : "not configured (offline mode)"}`);
     console.log(`Auth: ${apiKey ? "API key required in production" : "open access (set DASHBOARD_API_KEY for production)"}`);
