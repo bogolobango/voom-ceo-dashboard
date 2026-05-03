@@ -75,20 +75,33 @@ export default function Home() {
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
 
-  // ── React Query: each endpoint fetches independently ──
+  // ── React Query: staggered loading ──
+  // Critical path (fires immediately): stats, briefing, vendors
+  // These power the Morning Briefing section (the default view).
   const statsQuery = useQuery({ queryKey: ['stats'], queryFn: fetchStats });
-  const vendorsQuery = useQuery({ queryKey: ['vendors'], queryFn: fetchVendors });
-  const ordersQuery = useQuery({ queryKey: ['orders'], queryFn: fetchOrders });
-  const productsQuery = useQuery({ queryKey: ['products'], queryFn: fetchProducts });
-  const partRequestsQuery = useQuery({ queryKey: ['partRequests'], queryFn: fetchPartRequests });
-  const revenueQuery = useQuery({ queryKey: ['revenue'], queryFn: fetchRevenue });
-  const growthQuery = useQuery({ queryKey: ['growth'], queryFn: fetchGrowth });
   const briefingQuery = useQuery({ queryKey: ['briefing'], queryFn: fetchBriefing });
-  const verificationQuery = useQuery({ queryKey: ['verification-queue'], queryFn: fetchVerificationQueue, staleTime: 60000, refetchInterval: 120000 });
+  const vendorsQuery = useQuery({ queryKey: ['vendors'], queryFn: fetchVendors });
+
+  // Deferred: only fetch when user navigates to a section that needs this data.
+  // React Query caches results, so navigating back is instant.
+  const needsOrders = ['overview', 'orders', 'revenue'].includes(activeSection);
+  const needsProducts = ['overview', 'products'].includes(activeSection);
+  const needsPartRequests = ['overview', 'part-requests'].includes(activeSection);
+  const needsRevenue = ['revenue'].includes(activeSection);
+  const needsGrowth = ['growth'].includes(activeSection);
+  const needsVerification = ['verification'].includes(activeSection);
+
+  const ordersQuery = useQuery({ queryKey: ['orders'], queryFn: fetchOrders, enabled: needsOrders });
+  const productsQuery = useQuery({ queryKey: ['products'], queryFn: fetchProducts, enabled: needsProducts });
+  const partRequestsQuery = useQuery({ queryKey: ['partRequests'], queryFn: fetchPartRequests, enabled: needsPartRequests });
+  const revenueQuery = useQuery({ queryKey: ['revenue'], queryFn: fetchRevenue, enabled: needsRevenue });
+  const growthQuery = useQuery({ queryKey: ['growth'], queryFn: fetchGrowth, enabled: needsGrowth });
+  const verificationQuery = useQuery({ queryKey: ['verification-queue'], queryFn: fetchVerificationQueue, staleTime: 60000, refetchInterval: 120000, enabled: needsVerification });
   const waLeadsCountQuery = useQuery({
     queryKey: ['wa-leads-count'],
     queryFn: () => fetch('/api/whatsapp/leads?status=new').then(r => r.ok ? r.json() : { total: 0 }).then(d => d.total ?? 0),
     refetchInterval: 60_000,
+    enabled: activeSection === 'crm',
   });
 
   const vendors = vendorsQuery.data ?? [];
