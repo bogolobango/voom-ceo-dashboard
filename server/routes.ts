@@ -128,36 +128,23 @@ router.get("/api/vendors", async (req, res) => {
 
     if (error) throw error;
 
-    const vendorIds = (allVendors || []).map((v: any) => v.id);
+    // Product counts: fetch ONLY vendorId column (tiny payload vs full product rows)
+    // and count in memory. Skip order revenue — totalSales on the vendor record is sufficient.
     let productMap = new Map<number, number>();
-    let orderMap = new Map<number, { count: number; revenue: number }>();
+    const vendorIds = (allVendors || []).map((v: any) => v.id);
 
     if (vendorIds.length > 0) {
-      const { data: productCounts } = await supabase!
+      const { data: productVendorIds } = await supabase!
         .from("products")
         .select("vendorId")
         .in("vendorId", vendorIds);
 
-      for (const p of productCounts || []) {
+      for (const p of productVendorIds || []) {
         productMap.set(p.vendorId, (productMap.get(p.vendorId) || 0) + 1);
-      }
-
-      const { data: orderRows } = await supabase!
-        .from("orders")
-        .select("vendorId, totalAmount")
-        .in("vendorId", vendorIds);
-
-      for (const o of orderRows || []) {
-        const existing = orderMap.get(o.vendorId) || { count: 0, revenue: 0 };
-        orderMap.set(o.vendorId, {
-          count: existing.count + 1,
-          revenue: existing.revenue + (Number(o.totalAmount) || 0),
-        });
       }
     }
 
     const vendorData = (allVendors || []).map((v: any) => {
-      const oStats = orderMap.get(v.id);
       return {
         id: v.id,
         userId: v.userId ?? null,
@@ -170,7 +157,7 @@ router.get("/api/vendors", async (req, res) => {
         verified: v.verified,
         rating: v.rating != null ? String(v.rating) : null,
         totalSales: v.totalSales || 0,
-        totalRevenue: oStats?.revenue ?? 0,
+        totalRevenue: 0,
         totalListings: productMap.get(v.id) || 0,
         tier: v.tier,
         isFeatured: v.isFeatured,

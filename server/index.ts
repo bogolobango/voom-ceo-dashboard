@@ -1,4 +1,5 @@
 import express from "express";
+import compression from "compression";
 import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -49,6 +50,9 @@ export function safeLogError(label: string, error: unknown) {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+
+  // ── Compression (gzip/brotli — 80% smaller responses) ──
+  app.use(compression());
 
   // ── Security Headers (Helmet) ──
   app.use(helmet({
