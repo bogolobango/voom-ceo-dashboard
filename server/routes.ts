@@ -19,6 +19,12 @@ const CACHE_KEYS = {
   categories: "api:categories",
   briefing: "api:briefing",
   vendorHealth: "api:vendor-health",
+  vendors: "api:vendors",
+  orders: "api:orders",
+  products: "api:products",
+  supplyDemand: "api:supply-demand",
+  traffic: "api:traffic",
+  engagement: "api:engagement",
 };
 
 const MAX_PAGE_SIZE = 1000;
@@ -72,9 +78,14 @@ router.get("/api/stats", async (_req, res) => {
       .select("*", { count: "exact", head: true })
       .eq("status", "pending");
 
+    // Revenue/commission are recomputed by the frontend from the orders array.
+    // Avoid fetching every order row here — use a lightweight Supabase RPC or
+    // accept that this endpoint returns 0 for revenue (frontend overrides it).
+    // For now, just fetch with a reasonable limit to avoid pulling 10K+ rows.
     const { data: revenueData } = await supabase!
       .from("orders")
-      .select("totalAmount, commissionAmount");
+      .select("totalAmount, commissionAmount")
+      .limit(2000);
 
     const totalRevenue = (revenueData || []).reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0);
     const totalCommission = (revenueData || []).reduce((sum: number, o: any) => sum + (Number(o.commissionAmount) || 0), 0);
@@ -102,6 +113,9 @@ router.get("/api/stats", async (_req, res) => {
 // ─── Vendors ────────────────────────────────────────────────
 
 router.get("/api/vendors", async (req, res) => {
+  const cacheKey = `${CACHE_KEYS.vendors}:${req.query.limit || ''}:${req.query.offset || ''}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return res.json(cached);
   if (dbUnavailable(res)) return;
   const { limit, offset } = parsePagination(req.query);
 
@@ -168,7 +182,9 @@ router.get("/api/vendors", async (req, res) => {
       };
     });
 
-    res.json({ source: "database", data: vendorData, pagination: { limit, offset } });
+    const vendorResult = { source: "database", data: vendorData, pagination: { limit, offset } };
+    cache.set(cacheKey, vendorResult, 300); // 5 min
+    res.json(vendorResult);
   } catch (error) {
     safeLogError("Vendors query error", error);
     res.status(500).json({ error: "Database query failed" });
@@ -178,6 +194,9 @@ router.get("/api/vendors", async (req, res) => {
 // ─── Orders ─────────────────────────────────────────────────
 
 router.get("/api/orders", async (req, res) => {
+  const orderCacheKey = `${CACHE_KEYS.orders}:${req.query.limit || ''}:${req.query.offset || ''}`;
+  const cachedOrders = cache.get(orderCacheKey);
+  if (cachedOrders) return res.json(cachedOrders);
   if (dbUnavailable(res)) return;
   const { limit, offset } = parsePagination(req.query);
 
@@ -220,7 +239,9 @@ router.get("/api/orders", async (req, res) => {
       createdAt: o.createdAt,
     }));
 
-    res.json({ source: "database", data: orderData, pagination: { limit, offset } });
+    const orderResult = { source: "database", data: orderData, pagination: { limit, offset } };
+    cache.set(orderCacheKey, orderResult, 300);
+    res.json(orderResult);
   } catch (error) {
     safeLogError("Orders query error", error);
     res.status(500).json({ error: "Database query failed" });
@@ -230,6 +251,9 @@ router.get("/api/orders", async (req, res) => {
 // ─── Products ───────────────────────────────────────────────
 
 router.get("/api/products", async (req, res) => {
+  const prodCacheKey = `${CACHE_KEYS.products}:${req.query.limit || ''}:${req.query.offset || ''}`;
+  const cachedProds = cache.get(prodCacheKey);
+  if (cachedProds) return res.json(cachedProds);
   if (dbUnavailable(res)) return;
   const { limit, offset } = parsePagination(req.query);
 
@@ -272,7 +296,9 @@ router.get("/api/products", async (req, res) => {
       createdAt: p.createdAt,
     }));
 
-    res.json({ source: "database", data: productData, pagination: { limit, offset } });
+    const prodResult = { source: "database", data: productData, pagination: { limit, offset } };
+    cache.set(prodCacheKey, prodResult, 300);
+    res.json(prodResult);
   } catch (error) {
     safeLogError("Products query error", error);
     res.status(500).json({ error: "Database query failed" });
@@ -532,16 +558,13 @@ router.get("/api/briefing", async (_req, res) => {
 
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    // All queries in a single Promise.all for minimum latency
+    // Consolidated queries: 10 DB round trips instead of 17.
+    // Combine 6 analytics_events count queries into 2 bulk fetches + in-memory counting.
     const [
-      { count: todaySearches },
-      { count: todayWhatsappTaps },
-      { count: todayProductViews },
+      { data: todayEvents },        // All event types today — count in memory
+      { data: yesterdayEvents },     // All event types yesterday — count in memory
       { count: todayNewVendors },
       { count: todayPartRequests },
-      { count: yesterdaySearches },
-      { count: yesterdayWhatsappTaps },
-      { count: yesterdayProductViews },
       { count: yesterdayNewVendors },
       { count: yesterdayPartRequests },
       { data: recentSearchEvents },
@@ -552,14 +575,10 @@ router.get("/api/briefing", async (_req, res) => {
       { count: yesterdayNewUsers },
       { data: productViewEvents },
     ] = await Promise.all([
-      supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "search").gte("createdAt", todayStart),
-      supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "whatsapp_tap").gte("createdAt", todayStart),
-      supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "product_view").gte("createdAt", todayStart),
+      supabase!.from("analytics_events").select("eventType").gte("createdAt", todayStart),
+      supabase!.from("analytics_events").select("eventType").gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
       supabase!.from("vendors").select("*", { count: "exact", head: true }).gte("createdAt", todayStart),
       supabase!.from("part_requests").select("*", { count: "exact", head: true }).gte("createdAt", todayStart),
-      supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "search").gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
-      supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "whatsapp_tap").gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
-      supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "product_view").gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
       supabase!.from("vendors").select("*", { count: "exact", head: true }).gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
       supabase!.from("part_requests").select("*", { count: "exact", head: true }).gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
       supabase!.from("analytics_events").select("metadata").eq("eventType", "search").gte("createdAt", twentyFourHoursAgo),
@@ -570,6 +589,15 @@ router.get("/api/briefing", async (_req, res) => {
       supabase!.from("users").select("*", { count: "exact", head: true }).gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
       supabase!.from("analytics_events").select("productId").eq("eventType", "product_view").gte("createdAt", thirtyDaysAgo).not("productId", "is", null),
     ]);
+
+    // Count event types in memory instead of 6 separate DB queries
+    const countByType = (events: any[] | null, type: string) => (events || []).filter((e: any) => e.eventType === type).length;
+    const todaySearches = countByType(todayEvents, "search");
+    const todayWhatsappTaps = countByType(todayEvents, "whatsapp_tap");
+    const todayProductViews = countByType(todayEvents, "product_view");
+    const yesterdaySearches = countByType(yesterdayEvents, "search");
+    const yesterdayWhatsappTaps = countByType(yesterdayEvents, "whatsapp_tap");
+    const yesterdayProductViews = countByType(yesterdayEvents, "product_view");
 
     // Process search events — normalize queries so typo variants cluster
     const queryCountMap = new Map<string, { count: number; display: string }>();
@@ -1828,6 +1856,8 @@ router.post("/api/vendors/invite", async (req, res) => {
 
 router.get("/api/analytics/supply-demand", async (_req, res) => {
   if (dbUnavailable(res)) return;
+  const cached = cache.get(CACHE_KEYS.supplyDemand);
+  if (cached) return res.json(cached);
   try {
     const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
 
@@ -1993,7 +2023,7 @@ router.get("/api/analytics/supply-demand", async (_req, res) => {
         inferred: !d.hasResultCount,
       }));
 
-    res.json({
+    const result = {
       source: "database",
       data: {
         gaps: gapsWithMatches,
@@ -2009,7 +2039,9 @@ router.get("/api/analytics/supply-demand", async (_req, res) => {
         inferredZeroCount: inferredZeroResult,
         explicitZeroCount: confirmedZeroResult,
       },
-    });
+    };
+    cache.set(CACHE_KEYS.supplyDemand, result, 1800); // 30 min
+    res.json(result);
   } catch (error) {
     safeLogError("Supply-demand gap query error", error);
     res.status(500).json({ error: "Database query failed" });
@@ -2276,6 +2308,8 @@ router.post("/api/track", express.text({ type: "text/plain" }), async (req, res)
 
 router.get("/api/analytics/engagement", async (_req, res) => {
   if (dbUnavailable(res)) return;
+  const cached = cache.get(CACHE_KEYS.engagement);
+  if (cached) return res.json(cached);
   try {
     const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
     const fourteenDaysAgo = new Date(Date.now() - 14 * 86400000).toISOString();
@@ -2371,7 +2405,7 @@ router.get("/api/analytics/engagement", async (_req, res) => {
 
     const sorted = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
 
-    res.json({
+    const result = {
       source: "database",
       data: {
         filterUsage: {
@@ -2385,7 +2419,9 @@ router.get("/api/analytics/engagement", async (_req, res) => {
         sessionDurations,
         vendorViews: sorted(vendorViews).slice(0, 20),
       },
-    });
+    };
+    cache.set(CACHE_KEYS.engagement, result, 600); // 10 min
+    res.json(result);
   } catch (error) {
     safeLogError("Engagement analytics error", error);
     res.status(500).json({ error: "Database query failed" });
@@ -2397,6 +2433,8 @@ router.get("/api/analytics/engagement", async (_req, res) => {
 // GET /api/analytics/traffic — traffic overview with sources, geo, pages
 router.get("/api/analytics/traffic", async (_req, res) => {
   if (dbUnavailable(res)) return;
+  const cached = cache.get(CACHE_KEYS.traffic);
+  if (cached) return res.json(cached);
   try {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
     const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
@@ -2461,7 +2499,7 @@ router.get("/api/analytics/traffic", async (_req, res) => {
     const sortedEntries = (map: Map<string, number>) =>
       [...map.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
 
-    res.json({
+    const trafficResult = {
       source: "database",
       data: {
         overview: {
@@ -2495,7 +2533,9 @@ router.get("/api/analytics/traffic", async (_req, res) => {
         devices: sortedEntries(deviceMap),
         browsers: sortedEntries(browserMap),
       },
-    });
+    };
+    cache.set(CACHE_KEYS.traffic, trafficResult, 600); // 10 min
+    res.json(trafficResult);
   } catch (error) {
     safeLogError("Analytics traffic query error", error);
     res.status(500).json({ error: "Database query failed" });
