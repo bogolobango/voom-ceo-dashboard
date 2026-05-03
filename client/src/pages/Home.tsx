@@ -4,27 +4,29 @@
  * Uses React Query for data fetching with per-widget error boundaries
  */
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Sidebar } from '../components/Sidebar';
 import { MobileNav } from '../components/MobileNav';
 import { WidgetErrorBoundary } from '../components/WidgetErrorBoundary';
+// Critical path — loaded immediately (first 3 sections users see)
+import { MorningBriefing } from '../components/sections/MorningBriefing';
 import { Overview } from '../components/sections/Overview';
 import { Vendors } from '../components/sections/Vendors';
-import { Products } from '../components/sections/Products';
-import { Orders } from '../components/sections/Orders';
-import { Revenue } from '../components/sections/Revenue';
-import { PartRequests } from '../components/sections/PartRequests';
-import { Growth } from '../components/sections/Growth';
-import { MorningBriefing } from '../components/sections/MorningBriefing';
-import { VendorCRM } from '../components/sections/VendorCRM';
-import { Security } from '../components/sections/Security';
-import { CompetitiveIntel } from '../components/sections/CompetitiveIntel';
-import { Analytics } from '../components/sections/Analytics';
-import { VerificationQueue } from '../components/sections/VerificationQueue';
-import { MarketExpansion } from '../components/sections/MarketExpansion';
-import { Reports } from '../components/sections/Reports';
-import { Settings } from '../components/sections/Settings';
+// Lazy-loaded — only fetched when user navigates to that section
+const Products = lazy(() => import('../components/sections/Products').then(m => ({ default: m.Products })));
+const Orders = lazy(() => import('../components/sections/Orders').then(m => ({ default: m.Orders })));
+const Revenue = lazy(() => import('../components/sections/Revenue').then(m => ({ default: m.Revenue })));
+const PartRequests = lazy(() => import('../components/sections/PartRequests').then(m => ({ default: m.PartRequests })));
+const Growth = lazy(() => import('../components/sections/Growth').then(m => ({ default: m.Growth })));
+const VendorCRM = lazy(() => import('../components/sections/VendorCRM').then(m => ({ default: m.VendorCRM })));
+const Security = lazy(() => import('../components/sections/Security').then(m => ({ default: m.Security })));
+const CompetitiveIntel = lazy(() => import('../components/sections/CompetitiveIntel').then(m => ({ default: m.CompetitiveIntel })));
+const Analytics = lazy(() => import('../components/sections/Analytics').then(m => ({ default: m.Analytics })));
+const VerificationQueue = lazy(() => import('../components/sections/VerificationQueue').then(m => ({ default: m.VerificationQueue })));
+const MarketExpansion = lazy(() => import('../components/sections/MarketExpansion').then(m => ({ default: m.MarketExpansion })));
+const Reports = lazy(() => import('../components/sections/Reports').then(m => ({ default: m.Reports })));
+const Settings = lazy(() => import('../components/sections/Settings').then(m => ({ default: m.Settings })));
 import {
   fetchStats, fetchVendors, fetchOrders, fetchProducts,
   fetchPartRequests, fetchRevenue, fetchGrowth, fetchBriefing,
@@ -428,7 +430,16 @@ export default function Home() {
                 <p style={{ fontSize: '0.8125rem', color: '#94A3B8' }}>Connecting to backend...</p>
               </div>
             </div>
-          ) : renderSection()}
+          ) : (
+            <Suspense fallback={
+              <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
+                <div style={{ width: 32, height: 32, border: '3px solid rgba(79,70,229,0.15)', borderTopColor: '#4F46E5', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 1rem' }} />
+                <p style={{ fontSize: '0.8125rem', color: '#94A3B8', fontFamily: 'Plus Jakarta Sans' }}>Loading section...</p>
+              </div>
+            }>
+              {renderSection()}
+            </Suspense>
+          )}
         </div>
       </main>
 
