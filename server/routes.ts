@@ -566,6 +566,7 @@ router.get("/api/briefing", async (_req, res) => {
       { count: totalUsers },
       { count: yesterdayNewUsers },
       { data: productViewEvents },
+      { data: productsForNorm },
     ] = await Promise.all([
       supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "search").gte("createdAt", todayStart),
       supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "whatsapp_tap").gte("createdAt", todayStart),
@@ -584,22 +585,26 @@ router.get("/api/briefing", async (_req, res) => {
       supabase!.from("users").select("*", { count: "exact", head: true }),
       supabase!.from("users").select("*", { count: "exact", head: true }).gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
       supabase!.from("analytics_events").select("productId").eq("eventType", "product_view").gte("createdAt", thirtyDaysAgo).not("productId", "is", null).limit(10000),
+      // Product vocabulary for search normalization (fuzzy matching typos)
+      supabase!.from("products").select("name, vehicleMake, vehicleModel"),
     ]);
 
     // Counts are now server-side (head: true, count: "exact") — no in-memory filtering needed.
 
-    // Process search events — normalize queries so typo variants cluster
+    // Process search events — normalize queries so typo variants cluster.
+    // Uses product catalog vocabulary for fuzzy matching (e.g. "vw thrott" → "throttle").
+    const productsVocab = (productsForNorm || []).map((p: any) => ({
+      name: p.name, vehicleMake: p.vehicleMake, vehicleModel: p.vehicleModel,
+    }));
     const queryCountMap = new Map<string, { count: number; display: string }>();
     const queryResultMap = new Map<string, number>();
     const zeroResultMap = new Map<string, number>();
-    // Light normalization for briefing: use normalizeQueryCached with an empty vocab
-    // (applies synonyms and rules but no fuzzy matching — fast enough for briefing)
     for (const evt of recentSearchEvents || []) {
       const meta = evt.metadata as Record<string, unknown> | null;
       if (!meta) continue;
       const rawQuery = meta.query as string | undefined;
       if (!rawQuery) continue;
-      const { normalized } = normalizeQueryCached(rawQuery, []);
+      const { normalized } = normalizeQueryCached(rawQuery, productsVocab);
       if (!normalized || normalized.length < 2) continue;
       const existing = queryCountMap.get(normalized) || { count: 0, display: rawQuery };
       existing.count++;
