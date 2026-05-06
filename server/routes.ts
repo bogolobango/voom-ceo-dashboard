@@ -545,11 +545,16 @@ router.get("/api/briefing", async (_req, res) => {
 
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    // Consolidated queries: 10 DB round trips instead of 17.
-    // Combine 6 analytics_events count queries into 2 bulk fetches + in-memory counting.
+    // Server-side COUNTs for pulse bar — no row limit, accurate at any scale.
+    // The previous approach (bulk fetch + in-memory count) was truncated at
+    // Supabase's 1,000-row default, causing undercounts on busy days.
     const [
-      { data: todayEvents },        // All event types today — count in memory
-      { data: yesterdayEvents },     // All event types yesterday — count in memory
+      { count: todaySearches },
+      { count: todayWhatsappTaps },
+      { count: todayProductViews },
+      { count: yesterdaySearches },
+      { count: yesterdayWhatsappTaps },
+      { count: yesterdayProductViews },
       { count: todayNewVendors },
       { count: todayPartRequests },
       { count: yesterdayNewVendors },
@@ -561,43 +566,45 @@ router.get("/api/briefing", async (_req, res) => {
       { count: totalUsers },
       { count: yesterdayNewUsers },
       { data: productViewEvents },
+      { data: productsForNorm },
     ] = await Promise.all([
-      supabase!.from("analytics_events").select("eventType").gte("createdAt", todayStart),
-      supabase!.from("analytics_events").select("eventType").gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
+      supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "search").gte("createdAt", todayStart),
+      supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "whatsapp_tap").gte("createdAt", todayStart),
+      supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "product_view").gte("createdAt", todayStart),
+      supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "search").gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
+      supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "whatsapp_tap").gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
+      supabase!.from("analytics_events").select("*", { count: "exact", head: true }).eq("eventType", "product_view").gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
       supabase!.from("vendors").select("*", { count: "exact", head: true }).gte("createdAt", todayStart),
       supabase!.from("part_requests").select("*", { count: "exact", head: true }).gte("createdAt", todayStart),
       supabase!.from("vendors").select("*", { count: "exact", head: true }).gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
       supabase!.from("part_requests").select("*", { count: "exact", head: true }).gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
-      supabase!.from("analytics_events").select("metadata").eq("eventType", "search").gte("createdAt", twentyFourHoursAgo),
+      supabase!.from("analytics_events").select("metadata").eq("eventType", "search").gte("createdAt", twentyFourHoursAgo).limit(5000),
       supabase!.from("vendors").select("id, businessName, tier, tierExpiresAt, tierTrialUsed").neq("tier", "free").gte("tierExpiresAt", nowISO).lte("tierExpiresAt", sevenDaysFromNow),
       supabase!.from("vendors").select("userId, tier, tierExpiresAt, status").neq("tier", "free"),
       supabase!.from("users").select("*", { count: "exact", head: true }).gte("createdAt", todayStart),
       supabase!.from("users").select("*", { count: "exact", head: true }),
       supabase!.from("users").select("*", { count: "exact", head: true }).gte("createdAt", yesterdayStart).lt("createdAt", todayStart),
-      supabase!.from("analytics_events").select("productId").eq("eventType", "product_view").gte("createdAt", thirtyDaysAgo).not("productId", "is", null),
+      supabase!.from("analytics_events").select("productId").eq("eventType", "product_view").gte("createdAt", thirtyDaysAgo).not("productId", "is", null).limit(10000),
+      // Product vocabulary for search normalization (fuzzy matching typos)
+      supabase!.from("products").select("name, vehicleMake, vehicleModel"),
     ]);
 
-    // Count event types in memory instead of 6 separate DB queries
-    const countByType = (events: any[] | null, type: string) => (events || []).filter((e: any) => e.eventType === type).length;
-    const todaySearches = countByType(todayEvents, "search");
-    const todayWhatsappTaps = countByType(todayEvents, "whatsapp_tap");
-    const todayProductViews = countByType(todayEvents, "product_view");
-    const yesterdaySearches = countByType(yesterdayEvents, "search");
-    const yesterdayWhatsappTaps = countByType(yesterdayEvents, "whatsapp_tap");
-    const yesterdayProductViews = countByType(yesterdayEvents, "product_view");
+    // Counts are now server-side (head: true, count: "exact") — no in-memory filtering needed.
 
-    // Process search events — normalize queries so typo variants cluster
+    // Process search events — normalize queries so typo variants cluster.
+    // Uses product catalog vocabulary for fuzzy matching (e.g. "vw thrott" → "throttle").
+    const productsVocab = (productsForNorm || []).map((p: any) => ({
+      name: p.name, vehicleMake: p.vehicleMake, vehicleModel: p.vehicleModel,
+    }));
     const queryCountMap = new Map<string, { count: number; display: string }>();
     const queryResultMap = new Map<string, number>();
     const zeroResultMap = new Map<string, number>();
-    // Light normalization for briefing: use normalizeQueryCached with an empty vocab
-    // (applies synonyms and rules but no fuzzy matching — fast enough for briefing)
     for (const evt of recentSearchEvents || []) {
       const meta = evt.metadata as Record<string, unknown> | null;
       if (!meta) continue;
       const rawQuery = meta.query as string | undefined;
       if (!rawQuery) continue;
-      const { normalized } = normalizeQueryCached(rawQuery, []);
+      const { normalized } = normalizeQueryCached(rawQuery, productsVocab);
       if (!normalized || normalized.length < 2) continue;
       const existing = queryCountMap.get(normalized) || { count: 0, display: rawQuery };
       existing.count++;
