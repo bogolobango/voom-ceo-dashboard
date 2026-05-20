@@ -14,7 +14,8 @@
     "check": "tsc --noEmit",
     "format": "prettier --write .",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "export:dormant-vendors": "tsx scripts/export-dormant-vendors.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
