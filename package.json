@@ -15,7 +15,9 @@
     "format": "prettier --write .",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "export:dormant-vendors": "tsx scripts/export-dormant-vendors.ts"
+    "export:dormant-vendors": "tsx scripts/export-dormant-vendors.ts",
+    "export:cto-signals": "tsx scripts/export-cto-signals.ts",
+    "test:scripts": "vitest run scripts --root ."
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
