@@ -1,0 +1,4 @@
+# Real vendor phone numbers + message content. Never commit.
+*.jsonl
+*.md
+!.gitignore
