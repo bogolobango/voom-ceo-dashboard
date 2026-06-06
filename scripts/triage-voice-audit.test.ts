@@ -57,6 +57,11 @@ describe("auditEntries", () => {
     expect(auditEntries([bad])[0].reason).toMatch(/em-dash/);
   });
 
+  it("allows authorised emoji with U+FE0F variation selector", () => {
+    const withVS = "Got it ✅️ setting up shop now";
+    expect(auditEntries([{ ...BASE, draft_text: withVS }])).toEqual([]);
+  });
+
   it("ignores draft_text when entry was skipped (draft_sent=false and empty draft_text)", () => {
     const skipped = { ...BASE, draft_text: "", draft_sent: false };
     expect(auditEntries([skipped])).toEqual([]);

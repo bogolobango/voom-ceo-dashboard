@@ -1,9 +1,11 @@
 import { readFileSync } from "node:fs";
 import { TriageEntrySchema, type TriageEntry } from "./triage-types.js";
 
-const AUTHORISED_EMOJI = new Set([
-  "👋", "🚗", "✅", "🎉", "📸", "🏷️", "💵", "📲", "🎁", "👍", "🙏", "👌", "✨",
-]);
+const AUTHORISED_EMOJI = new Set(
+  ["👋", "🚗", "✅", "🎉", "📸", "🏷️", "💵", "📲", "🎁", "👍", "🙏", "👌", "✨"].map(
+    (e) => e.replace(/️$/, ""),
+  ),
+);
 
 const EMOJI_REGEX = /\p{Extended_Pictographic}(?:️)?/gu;
 
@@ -24,11 +26,12 @@ function scanText(text: string, thread_id: string, field: Violation["field"]): V
   }
   const matches = text.match(EMOJI_REGEX) ?? [];
   for (const emoji of matches) {
-    if (!AUTHORISED_EMOJI.has(emoji)) {
+    const normalized = emoji.replace(/️$/, "");
+    if (!AUTHORISED_EMOJI.has(normalized)) {
       out.push({
         thread_id,
         field,
-        reason: `unauthorised emoji: ${emoji}`,
+        reason: `unauthorised emoji: ${normalized}`,
         snippet: text,
       });
     }
