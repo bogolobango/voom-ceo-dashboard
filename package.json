@@ -19,7 +19,8 @@
     "export:cto-signals": "tsx --env-file=.env scripts/export-cto-signals.ts",
     "test:scripts": "vitest run scripts --root .",
     "triage:log": "tsx scripts/triage-log-append.ts",
-    "triage:audit": "tsx scripts/triage-voice-audit.ts"
+    "triage:audit": "tsx scripts/triage-voice-audit.ts",
+    "triage:report": "tsx scripts/triage-report-gen.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
