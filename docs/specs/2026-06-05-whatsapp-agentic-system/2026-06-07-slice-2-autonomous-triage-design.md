@@ -2,8 +2,28 @@
 
 **Date:** 2026-06-07
 **Author:** Claude (with Jim)
-**Status:** Design, pending Jim review
+**Status:** Design, approved, with provider amendment below
 **Predecessor:** [Slice 1 — Inbound Triage Burndown](./2026-06-05-inbound-triage-burndown-design.md) shipped 2026-06-06 with the JSONL log, voice audit, and report generator. Slice 2 swaps the terminal-driven session for a 24/7 autonomous service while reusing every Slice 1 artifact.
+
+---
+
+## ⚠ AMENDMENT 2026-06-07 — Provider: Meta Cloud API, not Twilio
+
+The original spec body specifies Twilio WhatsApp Business API as the provider. **This is wrong.** Reconnaissance revealed that `voom-ceo-dashboard` already has a full Meta WhatsApp Cloud API integration: `server/whatsapp-api.ts` (`sendTextMessage`, `parseWebhookPayload`, `verifyWebhookToken`, `processLeadMessage`, `broadcastToGroups`), `server/wa-config.ts` (config loader), and active routes `GET /api/webhook/whatsapp` (Meta verification handshake) + `POST /api/webhook/whatsapp` (incoming message handler) wired in `server/routes.ts`.
+
+The agent extends this existing infrastructure rather than running Twilio alongside it. Where the body says Twilio, read it as Meta Cloud API direct. Concretely:
+
+- **Inbound webhook:** extend the existing `POST /api/webhook/whatsapp` handler in `server/routes.ts` (not a new `/api/whatsapp-inbound` route).
+- **Signature verification:** Meta's SHA256 + app secret signature (X-Hub-Signature-256), not Twilio's HMAC-SHA1.
+- **Outbound send:** reuse existing `sendTextMessage(to, body)` from `server/whatsapp-api.ts`.
+- **Dedupe key:** Meta message `id` field, not Twilio `MessageSid`. JSONL schema field name will be `meta_message_id: string | null`.
+- **Env vars:** `WA_PHONE_NUMBER_ID`, `WA_ACCESS_TOKEN`, `WA_WEBHOOK_TOKEN`, `WA_BUSINESS_ACCOUNT_ID` (all already used by existing config). New env var: `WA_APP_SECRET` for X-Hub-Signature-256 verification.
+- **New phone number:** still provisioned dedicated for the agent, but through Meta Business Manager not Twilio console.
+- **Ops prereqs §14:** Twilio steps replaced by Meta phone number provisioning under the verified Business Portfolio.
+
+Everything provider-agnostic in this spec (classifier, voice audit, policy gate, escalator, daily summary cron, JSONL, error handling, testing approach, success criteria) is unchanged.
+
+---
 
 ---
 
