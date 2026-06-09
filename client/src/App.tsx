@@ -9,6 +9,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { PageContextProvider } from "./lib/page-context";
 import Home from "./pages/Home";
 
 const queryClient = new QueryClient({
@@ -37,10 +38,12 @@ function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <Toaster position="top-right" richColors />
-          <Router />
-        </TooltipProvider>
+        <PageContextProvider>
+          <TooltipProvider>
+            <Toaster position="top-right" richColors />
+            <Router />
+          </TooltipProvider>
+        </PageContextProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );
