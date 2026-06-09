@@ -191,7 +191,13 @@ async function startServer() {
   });
 }
 
-startServer().catch((err) => {
-  console.error("Failed to start server:", err);
-  process.exit(1);
-});
+// Only start the server when this file is executed directly (e.g. `tsx server/index.ts`).
+// When imported by another module (e.g. tests importing safeLogError), do nothing —
+// otherwise every test run would boot a real listening server.
+const isMainModule = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (isMainModule) {
+  startServer().catch((err) => {
+    console.error("Failed to start server:", err);
+    process.exit(1);
+  });
+}
