@@ -16,7 +16,7 @@ TABLE vendors  (~330 rows; admin-approved businesses)
   verified                boolean  legacy flag, broken (do not cite)
   featured                boolean  shown on homepage
   createdAt               timestamptz
-  // Note: phone, ghanaCardNumber, idDocumentUrl are PII — never include in answers.
+  // Note: phone, ghanaCardNumber, idDocumentUrl are PII - never include in answers.
 
 TABLE products
   id                      uuid     primary key
@@ -58,7 +58,7 @@ TABLE users
   id                      uuid     primary key
   role                    enum     'buyer' | 'vendor' | 'admin'
   createdAt               timestamptz
-  // Note: phone, email, passwordHash are PII — never include in answers.
+  // Note: phone, email, passwordHash are PII - never include in answers.
 
 TABLE wa_leads
   id                      uuid     primary key
