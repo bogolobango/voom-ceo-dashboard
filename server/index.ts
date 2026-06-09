@@ -20,6 +20,14 @@ const envSchema = z.object({
   DASHBOARD_API_KEY: z.string().min(1).optional(),
   NODE_ENV: z.enum(["development", "production", "test"]).optional(),
   ALLOWED_ORIGINS: z.string().optional(),
+  // Agent A1
+  ANTHROPIC_API_KEY: z.string().startsWith("sk-ant-").optional(),
+  AGENT_MODEL: z.string().default("claude-sonnet-4-6"),
+  MAX_AGENT_MESSAGES_PER_HOUR: z.coerce.number().int().positive().default(30),
+  MAX_AGENT_MESSAGES_PER_DAY: z.coerce.number().int().positive().default(200),
+  MAX_DAILY_AGENT_SPEND_CENTS: z.coerce.number().int().positive().default(500),
+  MAX_TOOL_CALLS_PER_TURN: z.coerce.number().int().positive().default(8),
+  AGENT_SPEND_ALERT_EMAIL: z.string().email().default("sales@voomparts.com"),
 });
 
 const env = envSchema.safeParse(process.env);
@@ -183,7 +191,13 @@ async function startServer() {
   });
 }
 
-startServer().catch((err) => {
-  console.error("Failed to start server:", err);
-  process.exit(1);
-});
+// Only start the server when this file is executed directly (e.g. `tsx server/index.ts`).
+// When imported by another module (e.g. tests importing safeLogError), do nothing —
+// otherwise every test run would boot a real listening server.
+const isMainModule = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (isMainModule) {
+  startServer().catch((err) => {
+    console.error("Failed to start server:", err);
+    process.exit(1);
+  });
+}

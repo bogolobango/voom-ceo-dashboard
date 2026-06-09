@@ -7,6 +7,7 @@ import { discoverWhatsAppGroups } from "./whatsapp-scraper.js";
 import { broadcastToGroups, verifyWebhookToken, processLeadMessage, parseWebhookPayload, sendTextMessage } from "./whatsapp-api.js";
 import { normalizeQueryCached } from "./query-normalize.js";
 import { loadWaConfig, saveWaConfig } from "./wa-config.js";
+import { agentRouter } from "./agent/routes.js";
 
 const router = Router();
 
@@ -3026,6 +3027,8 @@ router.post("/api/webhook/whatsapp", async (req, res) => {
     safeLogError("WhatsApp webhook processing error", error);
   }
 });
+
+router.use(agentRouter);
 
 export default router;
 

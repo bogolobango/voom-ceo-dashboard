@@ -15,11 +15,15 @@
     "format": "prettier --write .",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "export:dormant-vendors": "tsx scripts/export-dormant-vendors.ts",
+    "export:dormant-vendors": "tsx --env-file=.env scripts/export-dormant-vendors.ts",
     "export:cto-signals": "tsx --env-file=.env scripts/export-cto-signals.ts",
-    "test:scripts": "vitest run scripts --root ."
+    "test:scripts": "vitest run scripts --root .",
+    "triage:log": "tsx scripts/triage-log-append.ts",
+    "triage:audit": "tsx scripts/triage-voice-audit.ts",
+    "triage:report": "tsx scripts/triage-report-gen.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.102.0",
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",

@@ -2,7 +2,7 @@
 // VOOM Ghana Marketplace — Full Database Schema (Drizzle ORM)
 // ============================================================
 
-import { integer, pgEnum, pgTable, text, timestamp, varchar, decimal, boolean, json, serial } from "drizzle-orm/pg-core";
+import { integer, pgEnum, pgTable, text, timestamp, varchar, decimal, boolean, json, serial, uuid, jsonb, numeric, smallint, date } from "drizzle-orm/pg-core";
 
 // ── Enums ──────────────────────────────────────────────────
 
@@ -453,4 +453,38 @@ export const waScrapeJobs = pgTable("wa_scrape_jobs", {
   startedAt: timestamp("startedAt"),
   completedAt: timestamp("completedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+// ─── Agent A1 (chat + query layer) ─────────────────────────
+
+export const agentThreads = pgTable("agent_threads", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  title: text("title"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  lastMessageAt: timestamp("last_message_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const agentMessages = pgTable("agent_messages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  threadId: uuid("thread_id")
+    .notNull()
+    .references(() => agentThreads.id, { onDelete: "cascade" }),
+  role: text("role").notNull(), // 'user' | 'assistant' | 'tool'
+  content: text("content").notNull(),
+  toolCalls: jsonb("tool_calls"),
+  toolResults: jsonb("tool_results"),
+  tokensIn: integer("tokens_in"),
+  tokensOut: integer("tokens_out"),
+  costCents: numeric("cost_cents", { precision: 10, scale: 4 }),
+  latencyMs: integer("latency_ms"),
+  feedback: smallint("feedback").notNull().default(0),
+  pageContext: jsonb("page_context"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const agentDailySpend = pgTable("agent_daily_spend", {
+  day: date("day").primaryKey(),
+  centsSpent: numeric("cents_spent", { precision: 10, scale: 4 }).notNull().default("0"),
+  messageCount: integer("message_count").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
