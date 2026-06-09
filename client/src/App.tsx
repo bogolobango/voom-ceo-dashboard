@@ -10,6 +10,7 @@ import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { PageContextProvider } from "./lib/page-context";
+import { ChatButton } from "./components/chat/ChatButton";
 import Home from "./pages/Home";
 
 const queryClient = new QueryClient({
@@ -43,6 +44,7 @@ function App() {
             <Toaster position="top-right" richColors />
             <Router />
           </TooltipProvider>
+          <ChatButton />
         </PageContextProvider>
       </QueryClientProvider>
     </ErrorBoundary>
